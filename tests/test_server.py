@@ -47,6 +47,24 @@ class ServerResultTests(unittest.TestCase):
         self.assertEqual(result.structured_content["status"], "not_found")
         self.assertEqual(result.content[0].text, "見つからへんかったで。")
 
+    def test_csv_result_uses_intraday_series_name(self):
+        payload = {
+            "status": "ok",
+            "company": {"name": "テスト株式会社", "code": "12340"},
+            "row_count": 2,
+            "filename": "JQ_テスト株式会社_30min_2026-01-05_2026-01-05.csv",
+            "series_name": "30分足",
+        }
+        csv_text = "\ufeffDate,StartTimeJST\r\n2026-01-05,09:00\r\n"
+
+        with patch.dict(
+            os.environ,
+            {"RENDER_EXTERNAL_HOSTNAME": "example.onrender.com"},
+        ):
+            result = server._csv_result(payload, csv_text)
+
+        self.assertIn("30分足を2件取得", result.content[0].text)
+
 
 if __name__ == "__main__":
     unittest.main()

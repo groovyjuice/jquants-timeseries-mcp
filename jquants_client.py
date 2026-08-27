@@ -17,6 +17,7 @@ from urllib.request import Request, urlopen
 API_BASE_URL = "https://api.jquants.com"
 MASTER_PATH = "/v2/equities/master"
 DAILY_BARS_PATH = "/v2/equities/bars/daily"
+MINUTE_BARS_PATH = "/v2/equities/bars/minute"
 
 
 class JQuantsError(RuntimeError):
@@ -268,6 +269,41 @@ class JQuantsClient:
             unique[key] = row
         return sorted(unique.values(), key=lambda row: str(row.get("Date") or ""))
 
+    def get_minute_bars(
+        self,
+        code: str,
+        *,
+        from_date: str | None = None,
+        to_date: str | None = None,
+    ) -> list[dict[str, Any]]:
+        params = {"code": code}
+        start = normalize_date(from_date)
+        end = normalize_date(to_date)
+        if start and end and start > end:
+            raise JQuantsError("開始日は終了日以前にしてな。")
+        if start:
+            params["from"] = start
+        if end:
+            params["to"] = end
+
+        rows = self._get_all_pages(MINUTE_BARS_PATH, params)
+        unique: dict[tuple[str, str, str], dict[str, Any]] = {}
+        for row in rows:
+            key = (
+                str(row.get("Date") or ""),
+                str(row.get("Time") or ""),
+                str(row.get("Code") or code),
+            )
+            unique[key] = row
+        return sorted(
+            unique.values(),
+            key=lambda row: (
+                str(row.get("Date") or ""),
+                str(row.get("Time") or ""),
+                str(row.get("Code") or code),
+            ),
+        )
+
 
 CSV_COLUMNS: tuple[tuple[str, str], ...] = (
     ("Date", "Date"),
@@ -329,3 +365,161 @@ def sanitize_filename_component(value: str) -> str:
 def make_csv_filename(company_name: str, first_date: str, last_date: str) -> str:
     name = sanitize_filename_component(company_name)
     return f"JQ_{name}_{first_date}_{last_date}.csv"
+
+
+def _minute_bucket(time_value: Any) -> tuple[str, str] | None:
+    match = re.fullmatch(r"(\d{2}):(\d{2})(?::\d{2})?", str(time_value or ""))
+    if match is None:
+        raise JQuantsError(f"分足に不正な時刻が含まれてるで: {time_value}")
+
+    hour, minute = (int(part) for part in match.groups())
+    total_minutes = hour * 60 + minute
+    sessions = ((9 * 60, 11 * 60 + 30), (12 * 60 + 30, 15 * 60 + 30))
+    for session_start, session_end in sessions:
+        if session_start <= total_minutes <= session_end:
+            # The trades stamped exactly at 11:30 or 15:30 are closing-auction
+            # trades, so keep them in the preceding bar instead of creating a
+            # one-minute-only bucket.
+            bounded_minute = min(total_minutes, session_end - 1)
+            bucket_start = session_start + ((bounded_minute - session_start) // 30) * 30
+            bucket_end = min(bucket_start + 30, session_end)
+            return (
+                f"{bucket_start // 60:02d}:{bucket_start % 60:02d}",
+                f"{bucket_end // 60:02d}:{bucket_end % 60:02d}",
+            )
+    return None
+
+
+def _required_number(row: dict[str, Any], field: str) -> float:
+    value = row.get(field)
+    if value is None or isinstance(value, bool):
+        raise JQuantsError(f"分足の{field}が欠損してるで。")
+    try:
+        return float(value)
+    except (TypeError, ValueError) as exc:
+        raise JQuantsError(f"分足の{field}が数値やなかったで。") from exc
+
+
+def _optional_number(row: dict[str, Any], field: str) -> float:
+    value = row.get(field)
+    if value is None or value == "":
+        return 0.0
+    if isinstance(value, bool):
+        raise JQuantsError(f"分足の{field}が数値やなかったで。")
+    try:
+        return float(value)
+    except (TypeError, ValueError) as exc:
+        raise JQuantsError(f"分足の{field}が数値やなかったで。") from exc
+
+
+def _compact_number(value: float) -> int | float:
+    return int(value) if value.is_integer() else value
+
+
+def aggregate_minute_bars_30m(
+    rows: Iterable[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Aggregate J-Quants one-minute bars into TSE-session-aligned 30m bars."""
+    sorted_rows = sorted(
+        rows,
+        key=lambda row: (
+            str(row.get("Date") or ""),
+            str(row.get("Time") or ""),
+            str(row.get("Code") or ""),
+        ),
+    )
+    grouped: dict[tuple[str, str, str], dict[str, Any]] = {}
+
+    for row in sorted_rows:
+        day = str(row.get("Date") or "")
+        code = str(row.get("Code") or "")
+        if not day or not code:
+            raise JQuantsError("分足に日付または銘柄コードがない行が含まれてるで。")
+        bucket = _minute_bucket(row.get("Time"))
+        if bucket is None:
+            # Ignore trades outside the regular TSE cash-equity sessions.
+            continue
+        start_time, end_time = bucket
+        key = (day, start_time, code)
+        open_price = _required_number(row, "O")
+        high_price = _required_number(row, "H")
+        low_price = _required_number(row, "L")
+        close_price = _required_number(row, "C")
+        volume = _optional_number(row, "Vo")
+        turnover = _optional_number(row, "Va")
+
+        current = grouped.get(key)
+        if current is None:
+            grouped[key] = {
+                "Date": day,
+                "StartTimeJST": start_time,
+                "EndTimeJST": end_time,
+                "Code": code,
+                "O": open_price,
+                "H": high_price,
+                "L": low_price,
+                "C": close_price,
+                "Vo": volume,
+                "Va": turnover,
+                "SourceMinuteCount": 1,
+            }
+            continue
+
+        current["H"] = max(float(current["H"]), high_price)
+        current["L"] = min(float(current["L"]), low_price)
+        current["C"] = close_price
+        current["Vo"] = float(current["Vo"]) + volume
+        current["Va"] = float(current["Va"]) + turnover
+        current["SourceMinuteCount"] = int(current["SourceMinuteCount"]) + 1
+
+    result = sorted(
+        grouped.values(),
+        key=lambda row: (
+            str(row["Date"]),
+            str(row["StartTimeJST"]),
+            str(row["Code"]),
+        ),
+    )
+    for row in result:
+        for field in ("O", "H", "L", "C", "Vo", "Va"):
+            row[field] = _compact_number(float(row[field]))
+    return result
+
+
+INTRADAY_CSV_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("Date", "Date"),
+    ("StartTimeJST", "StartTimeJST"),
+    ("EndTimeJST", "EndTimeJST"),
+    ("Code", "Code"),
+    ("CompanyName", "CompanyName"),
+    ("O", "Open"),
+    ("H", "High"),
+    ("L", "Low"),
+    ("C", "Close"),
+    ("Vo", "Volume"),
+    ("Va", "TurnoverValue"),
+    ("SourceMinuteCount", "SourceMinuteCount"),
+)
+
+
+def intraday_bars_to_csv(
+    rows: Iterable[dict[str, Any]], company_name: str
+) -> str:
+    output = io.StringIO(newline="")
+    writer = csv.DictWriter(
+        output, fieldnames=[label for _, label in INTRADAY_CSV_COLUMNS]
+    )
+    writer.writeheader()
+    for row in rows:
+        converted: dict[str, Any] = {}
+        for source, label in INTRADAY_CSV_COLUMNS:
+            converted[label] = company_name if source == "CompanyName" else row.get(source)
+        writer.writerow(converted)
+    return "\ufeff" + output.getvalue()
+
+
+def make_intraday_csv_filename(
+    company_name: str, interval_minutes: int, first_date: str, last_date: str
+) -> str:
+    name = sanitize_filename_component(company_name)
+    return f"JQ_{name}_{interval_minutes}min_{first_date}_{last_date}.csv"

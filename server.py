@@ -22,8 +22,11 @@ from starlette.responses import PlainTextResponse, Response
 from jquants_client import (
     JQuantsClient,
     JQuantsError,
+    aggregate_minute_bars_30m,
     daily_bars_to_csv,
+    intraday_bars_to_csv,
     make_csv_filename,
+    make_intraday_csv_filename,
     normalize_date,
 )
 
@@ -41,7 +44,8 @@ DOWNLOAD_TTL_SECONDS = 15 * 60
 _downloads: dict[str, tuple[float, str, bytes]] = {}
 
 SERVER_INSTRUCTIONS = f"""
-日本株の時系列データ取得にはget_stock_timeseriesを使う。成功時はCSVの
+日本株の日足取得にはget_stock_timeseries、1分足または30分足の取得には
+get_stock_30min_timeseriesを使う。成功時はCSVの
 resource_linkとembedded resourceを返す。Google Driveのupload_fileにそのCSV
 ファイル参照をfile_uriとして渡し、「時系列データ」フォルダ
 {DRIVE_FOLDER_REFERENCE}へアップロードする。Google Driveツールが成功を返すまで
@@ -55,14 +59,22 @@ APIキーやMCP接続URLの秘密部分は会話・ツール結果・ファイ�
 mcp = MCPServer(
     name="jquants-timeseries",
     title="J-Quants時系列データ",
-    description="J-Quants API V2から日本株の日足を取得してCSV化します。",
+    description="J-Quants API V2から日本株の日足・30分足を取得してCSV化します。",
     instructions=SERVER_INSTRUCTIONS,
-    version="1.0.0",
+    version="1.1.0",
 )
 
 
 READ_ONLY = ToolAnnotations(
     title="J-Quantsの日足を取得",
+    readOnlyHint=True,
+    destructiveHint=False,
+    idempotentHint=True,
+    openWorldHint=True,
+)
+
+INTRADAY_READ_ONLY = ToolAnnotations(
+    title="J-Quantsの30分足を取得",
     readOnlyHint=True,
     destructiveHint=False,
     idempotentHint=True,
@@ -122,12 +134,13 @@ def _csv_result(payload: dict[str, Any], csv_text: str) -> CallToolResult:
         else f"file:///{filename}"
     )
     payload["file_url"] = resource_uri
+    series_name = str(payload.get("series_name") or "日足")
 
     return CallToolResult(
         content=[
             TextContent(
                 text=(
-                    f"{payload['company']['name']}（{payload['company']['code']}）の日足を"
+                    f"{payload['company']['name']}（{payload['company']['code']}）の{series_name}を"
                     f"{payload['row_count']}件取得し、{filename}を作成したで。"
                     "次にこのCSVファイル参照をGoogle Driveのupload_fileへ渡してな。"
                 )
@@ -136,7 +149,7 @@ def _csv_result(payload: dict[str, Any], csv_text: str) -> CallToolResult:
                 name=filename,
                 title=filename,
                 uri=resource_uri,
-                description="Google Drive保存用のJ-Quants日足CSV（15分間有効）",
+                description=f"Google Drive保存用のJ-Quants {series_name}CSV（15分間有効）",
                 mimeType="text/csv; charset=utf-8",
                 size=len(body),
             ),
@@ -221,6 +234,7 @@ def get_stock_timeseries(
             "first_date": first_date,
             "last_date": last_date,
             "filename": make_csv_filename(company.name, first_date, last_date),
+            "series_name": "日足",
             "mime_type": "text/csv; charset=utf-8",
             "preview_first": rows[:3],
             "preview_last": rows[-3:],
@@ -231,6 +245,119 @@ def get_stock_timeseries(
             },
             "warnings": warnings,
             "source": "https://jpx-jquants.com/ja/spec/eq-bars-daily",
+        }
+        return _csv_result(payload, csv_text)
+    except JQuantsError as exc:
+        raise ToolError(str(exc)) from exc
+
+
+@mcp.tool(
+    name="get_stock_30min_timeseries",
+    title="日本株の30分足データを取得",
+    description=(
+        "銘柄名または4/5桁の銘柄コードからJ-Quants API V2の1分足を取得し、"
+        "東証の前場・後場ごとに30分足OHLCVへ集計して、Google Driveへ保存できる"
+        "UTF-8 CSVを返す。30分足、分足、時間足CSVを求められたときに使う。"
+        "分足・ティックアドオンの契約が必要。銘柄が曖昧なら候補だけ返す。"
+    ),
+    annotations=INTRADAY_READ_ONLY,
+)
+def get_stock_30min_timeseries(
+    stock: str,
+    from_date: str | None = None,
+    to_date: str | None = None,
+) -> CallToolResult:
+    """J-Quantsの1分足を30分足へ集計し、CSVファイル参照を返します。"""
+    try:
+        client = JQuantsClient(os.environ.get("JQUANTS_API_KEY", ""))
+        candidates = client.search_companies(stock, limit=10)
+        if not candidates:
+            return _plain_result({
+                "status": "not_found",
+                "query": stock,
+                "message": "一致する上場銘柄が見つからへんかったで。銘柄コードも試してな。",
+                "candidates": [],
+            })
+
+        best_rank = candidates[0].rank
+        best = [candidate for candidate in candidates if candidate.rank == best_rank]
+        if len(best) != 1:
+            return _plain_result({
+                "status": "ambiguous",
+                "query": stock,
+                "message": "候補が複数あるため、銘柄コードを選んでな。",
+                "candidates": [candidate.public_dict() for candidate in best],
+            })
+
+        company = best[0]
+        minute_rows = client.get_minute_bars(
+            company.code,
+            from_date=from_date,
+            to_date=to_date,
+        )
+        if not minute_rows:
+            return _plain_result({
+                "status": "no_data",
+                "query": stock,
+                "company": company.public_dict(),
+                "message": (
+                    "指定範囲で取得できる1分足がなかったで。"
+                    "分足・ティックアドオンと取得期間を確認してな。"
+                ),
+            })
+
+        rows = aggregate_minute_bars_30m(minute_rows)
+        if not rows:
+            return _plain_result({
+                "status": "no_data",
+                "query": stock,
+                "company": company.public_dict(),
+                "message": "通常取引時間内で30分足に集計できる分足がなかったで。",
+            })
+
+        first_date = str(rows[0]["Date"])
+        last_date = str(rows[-1]["Date"])
+        requested_to = normalize_date(to_date)
+        warnings = [
+            "分足APIには調整済み株価がないため、株式分割・併合がある期間は別途補正が必要やで。",
+            "取引がなかった1分間はJ-Quantsの返却対象外やで。SourceMinuteCountで各30分足の構成分数を確認できるで。",
+        ]
+        if requested_to and last_date < requested_to:
+            warnings.append(
+                "指定した終了日より取得最終日が古いで。休場日、更新時刻またはプランの期間制限を確認してな。"
+            )
+
+        csv_text = intraday_bars_to_csv(rows, company.name)
+        payload: dict[str, Any] = {
+            "status": "ok",
+            "query": stock,
+            "company": company.public_dict(),
+            "interval_minutes": 30,
+            "raw_minute_row_count": len(minute_rows),
+            "row_count": len(rows),
+            "first_date": first_date,
+            "last_date": last_date,
+            "first_timestamp_jst": f"{first_date} {rows[0]['StartTimeJST']}",
+            "last_timestamp_jst": f"{last_date} {rows[-1]['StartTimeJST']}",
+            "filename": make_intraday_csv_filename(
+                company.name, 30, first_date, last_date
+            ),
+            "series_name": "30分足",
+            "mime_type": "text/csv; charset=utf-8",
+            "preview_first": rows[:3],
+            "preview_last": rows[-3:],
+            "session_definition_jst": {
+                "morning": "09:00-11:30",
+                "afternoon": "12:30-15:30",
+                "closing_auction": "11:30と15:30の約定は直前の30分足に含む",
+            },
+            "drive_destination": {
+                "folder_id": DRIVE_FOLDER_ID,
+                "folder_url": DRIVE_FOLDER_URL,
+                "folder_name": "時系列データ",
+            },
+            "warnings": warnings,
+            "source": "https://jpx-jquants.com/ja/spec/eq-bars-minute",
         }
         return _csv_result(payload, csv_text)
     except JQuantsError as exc:
