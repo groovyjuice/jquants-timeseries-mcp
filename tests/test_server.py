@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import unittest
+from unittest.mock import Mock
 from unittest.mock import patch
 
 from mcp_types import EmbeddedResource, ResourceLink
@@ -46,6 +47,26 @@ class ServerResultTests(unittest.TestCase):
         )
         self.assertEqual(result.structured_content["status"], "not_found")
         self.assertEqual(result.content[0].text, "見つからへんかったで。")
+
+    def test_daily_tool_routes_30m_marker_to_intraday_tool(self):
+        expected = Mock()
+        with patch.object(
+            server,
+            "get_stock_30min_timeseries",
+            return_value=expected,
+        ) as intraday:
+            result = server.get_stock_timeseries("1570 30分足")
+
+        self.assertIs(result, expected)
+        intraday.assert_called_once_with(
+            "1570",
+            from_date=None,
+            to_date=None,
+        )
+
+    def test_30m_marker_requires_stock(self):
+        with self.assertRaises(server.ToolError):
+            server.get_stock_timeseries("30分足")
 
     def test_csv_result_uses_intraday_series_name(self):
         payload = {

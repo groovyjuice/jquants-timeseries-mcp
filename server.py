@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import secrets
 import time
 from typing import Any
@@ -54,6 +55,8 @@ resource_linkとembedded resourceを返す。Google Driveのupload_fileにその
 J-Quants Freeでは直近12週間を除く過去2年分に制限されうるため、実際の
 first_date/last_dateを伝える。
 APIキーやMCP接続URLの秘密部分は会話・ツール結果・ファイルへ出力しない。
+クライアントにget_stock_30min_timeseriesがまだ表示されない場合は、
+get_stock_timeseriesのstockへ「1570 30分足」のように30分足指定を含める。
 """.strip()
 
 mcp = MCPServer(
@@ -116,6 +119,23 @@ def _plain_result(payload: dict[str, Any]) -> CallToolResult:
         content=[TextContent(text=str(payload.get("message") or payload["status"]))],
         structuredContent=payload,
     )
+
+
+_THIRTY_MINUTE_MARKER = re.compile(
+    r"(?i)(?:30\s*分(?:足)?|30\s*(?:m|min|minute)s?|分足)"
+)
+
+
+def _split_stock_series_query(stock: str) -> tuple[str, bool]:
+    wants_30m = _THIRTY_MINUTE_MARKER.search(stock) is not None
+    if not wants_30m:
+        return stock, False
+    cleaned = _THIRTY_MINUTE_MARKER.sub(" ", stock)
+    cleaned = re.sub(r"[|/,:：、]+", " ", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    if not cleaned:
+        raise JQuantsError("30分足を取得する銘柄名か銘柄コードも指定してな。")
+    return cleaned, True
 
 
 def _csv_result(payload: dict[str, Any], csv_text: str) -> CallToolResult:
@@ -182,12 +202,20 @@ def get_stock_timeseries(
 ) -> CallToolResult:
     """J-Quantsの日足を取得し、CSVファイル参照と保存先情報を返します。"""
     try:
+        stock_query, wants_30m = _split_stock_series_query(stock)
+        if wants_30m:
+            return get_stock_30min_timeseries(
+                stock_query,
+                from_date=from_date,
+                to_date=to_date,
+            )
+
         client = JQuantsClient(os.environ.get("JQUANTS_API_KEY", ""))
-        candidates = client.search_companies(stock, limit=10)
+        candidates = client.search_companies(stock_query, limit=10)
         if not candidates:
             return _plain_result({
                 "status": "not_found",
-                "query": stock,
+                "query": stock_query,
                 "message": "一致する上場銘柄が見つからへんかったで。銘柄コードも試してな。",
                 "candidates": [],
             })
@@ -197,7 +225,7 @@ def get_stock_timeseries(
         if len(best) != 1:
             return _plain_result({
                 "status": "ambiguous",
-                "query": stock,
+                "query": stock_query,
                 "message": "候補が複数あるため、銘柄コードを選んでな。",
                 "candidates": [candidate.public_dict() for candidate in best],
             })
@@ -228,7 +256,7 @@ def get_stock_timeseries(
 
         payload: dict[str, Any] = {
             "status": "ok",
-            "query": stock,
+            "query": stock_query,
             "company": company.public_dict(),
             "row_count": len(rows),
             "first_date": first_date,
