@@ -64,6 +64,27 @@ class ServerResultTests(unittest.TestCase):
             to_date=None,
         )
 
+    def test_timeseries_tool_routes_30m_interval_to_intraday_tool(self):
+        expected = Mock()
+        with patch.object(
+            server,
+            "get_stock_30min_timeseries",
+            return_value=expected,
+        ) as intraday:
+            result = server.get_stock_timeseries(
+                "6857",
+                from_date="2026-01-01",
+                to_date="2026-01-31",
+                interval="30m",
+            )
+
+        self.assertIs(result, expected)
+        intraday.assert_called_once_with(
+            "6857",
+            from_date="2026-01-01",
+            to_date="2026-01-31",
+        )
+
     def test_30m_marker_requires_stock(self):
         with self.assertRaises(server.ToolError):
             server.get_stock_timeseries("30分足")

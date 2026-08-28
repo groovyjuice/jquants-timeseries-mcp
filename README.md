@@ -8,6 +8,7 @@ J-Quants API V2から日本株の日足または30分足を取得し、ChatGPT�
 - 銘柄コードまたは会社名から上場銘柄を検索
 - `/v2/equities/bars/daily` の全ページを取得
 - `/v2/equities/bars/minute` の全ページを取得し、東証の前場・後場ごとに30分足へ集計
+- `get_stock_timeseries` の `interval` で `daily` / `30m` を明示的に選択
 - 調整前・調整済みOHLCVとストップ高安フラグをCSV化
 - Renderの秘密設定から保存先フォルダIDを読み込み、ツール結果に含める
 - 銘柄が曖昧なときは候補を返し、推測で選ばない
@@ -69,11 +70,12 @@ Freeプランでは、取得できる株価は直近12週間を除く過去2年�
 
 ## 30分足
 
-`get_stock_30min_timeseries` はJ-Quantsの1分足を取得し、次の区切りで
-30分足OHLCVへ集計します。
+`get_stock_timeseries(stock="6857", interval="30m")` または
+`get_stock_30min_timeseries(stock="6857")` はJ-Quantsの1分足を取得し、
+次の区切りで30分足OHLCVへ集計します。
 
-クライアント側のツール一覧が更新されていない場合は、既存の
-`get_stock_timeseries` の銘柄指定へ `1570 30分足` のように
+クライアント側のツール一覧が更新されておらず `interval` が表示されない場合は、
+既存の `get_stock_timeseries` の銘柄指定へ `1570 30分足` のように
 `30分足`を付けても同じ処理を呼び出せます。
 
 - 前場: 09:00〜11:30

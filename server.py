@@ -4,7 +4,7 @@ import os
 import re
 import secrets
 import time
-from typing import Any
+from typing import Any, Literal
 
 from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
@@ -45,8 +45,9 @@ DOWNLOAD_TTL_SECONDS = 15 * 60
 _downloads: dict[str, tuple[float, str, bytes]] = {}
 
 SERVER_INSTRUCTIONS = f"""
-日本株の日足取得にはget_stock_timeseries、1分足または30分足の取得には
-get_stock_30min_timeseriesを使う。成功時はCSVの
+日本株の日足・30分足取得にはget_stock_timeseriesを使い、intervalへ
+日足ならdaily、J-Quantsの1分足から30分足へ集計する場合は30mを指定する。
+get_stock_30min_timeseriesも30分足専用の互換ツールとして利用できる。成功時はCSVの
 resource_linkとembedded resourceを返す。Google Driveのupload_fileにそのCSV
 ファイル参照をfile_uriとして渡し、「時系列データ」フォルダ
 {DRIVE_FOLDER_REFERENCE}へアップロードする。Google Driveツールが成功を返すまで
@@ -55,16 +56,16 @@ resource_linkとembedded resourceを返す。Google Driveのupload_fileにその
 J-Quants Freeでは直近12週間を除く過去2年分に制限されうるため、実際の
 first_date/last_dateを伝える。
 APIキーやMCP接続URLの秘密部分は会話・ツール結果・ファイルへ出力しない。
-クライアントにget_stock_30min_timeseriesがまだ表示されない場合は、
+クライアント側にintervalまたはget_stock_30min_timeseriesがまだ表示されない場合は、
 get_stock_timeseriesのstockへ「1570 30分足」のように30分足指定を含める。
 """.strip()
 
 mcp = MCPServer(
     name="jquants-timeseries",
     title="J-Quants時系列データ",
-    description="J-Quants API V2から日本株の日足・30分足を取得してCSV化します。",
+    description="J-Quants API V2から日本株の日足または1分足由来の30分足を取得してCSV化します。",
     instructions=SERVER_INSTRUCTIONS,
-    version="1.1.0",
+    version="1.2.0",
 )
 
 
@@ -187,11 +188,13 @@ def _csv_result(payload: dict[str, Any], csv_text: str) -> CallToolResult:
 
 @mcp.tool(
     name="get_stock_timeseries",
-    title="日本株の時系列データを取得",
+    title="日本株の日足・30分足データを取得",
     description=(
-        "銘柄名または4/5桁の銘柄コードからJ-Quants API V2の日足を取得し、"
-        "Google Driveへ保存できるUTF-8 CSVを返す。日本株の時系列データ、"
-        "OHLCV、日足CSVを求められたときに使う。銘柄が曖昧なら候補だけ返す。"
+        "銘柄名または4/5桁の銘柄コードからJ-Quants API V2の日足または30分足を取得し、"
+        "Google Driveへ保存できるUTF-8 CSVを返す。intervalは日足ならdaily、"
+        "1分足を前場・後場別の30分足OHLCVへ集計するなら30mを指定する。"
+        "古いクライアントではstockへ『6857 30分足』と含めても30分足になる。"
+        "銘柄が曖昧なら候補だけ返す。"
     ),
     annotations=READ_ONLY,
 )
@@ -199,10 +202,12 @@ def get_stock_timeseries(
     stock: str,
     from_date: str | None = None,
     to_date: str | None = None,
+    interval: Literal["daily", "30m"] = "daily",
 ) -> CallToolResult:
-    """J-Quantsの日足を取得し、CSVファイル参照と保存先情報を返します。"""
+    """J-Quantsの日足または1分足由来の30分足CSVを返します。"""
     try:
-        stock_query, wants_30m = _split_stock_series_query(stock)
+        stock_query, marker_wants_30m = _split_stock_series_query(stock)
+        wants_30m = interval == "30m" or marker_wants_30m
         if wants_30m:
             return get_stock_30min_timeseries(
                 stock_query,
