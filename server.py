@@ -46,6 +46,7 @@ DRIVE_FOLDER_REFERENCE = (
 )
 DOWNLOAD_TTL_SECONDS = 15 * 60
 ONEOFF_EXPORT_TOKEN = os.environ.get("ONEOFF_EXPORT_TOKEN", "").strip()
+_TEMP_KIOXIA_CACHE: tuple[str, bytes] | None = None
 _downloads: dict[str, tuple[float, str, bytes]] = {}
 
 SERVER_INSTRUCTIONS = f"""
@@ -93,6 +94,43 @@ INTRADAY_READ_ONLY = ToolAnnotations(
 @mcp.custom_route("/health", methods=["GET"])
 async def health(_: Request) -> PlainTextResponse:
     return PlainTextResponse("ok")
+
+
+@mcp.custom_route("/tmp-kioxia-1min-7b42e5f1", methods=["GET"])
+async def temp_kioxia_1min(_: Request) -> Response:
+    global _TEMP_KIOXIA_CACHE
+    try:
+        if _TEMP_KIOXIA_CACHE is None:
+            client = JQuantsClient(os.environ.get("JQUANTS_API_KEY", ""))
+            candidates = client.search_companies("キオクシア", limit=10)
+            if not candidates:
+                return PlainTextResponse("Kioxia not found", status_code=404)
+            best_rank = candidates[0].rank
+            best = [candidate for candidate in candidates if candidate.rank == best_rank]
+            if len(best) != 1:
+                return PlainTextResponse("Kioxia ambiguous", status_code=409)
+            company = best[0]
+            rows = client.get_minute_bars(company.code)
+            if not rows:
+                return PlainTextResponse("No minute data", status_code=404)
+            first_date = str(rows[0].get("Date") or "unknown")
+            last_date = str(rows[-1].get("Date") or "unknown")
+            filename = make_minute_csv_filename(company.name, first_date, last_date)
+            body = minute_bars_to_csv(rows, company.name).encode("utf-8")
+            _TEMP_KIOXIA_CACHE = (filename, body)
+
+        filename, body = _TEMP_KIOXIA_CACHE
+        safe_ascii_name = filename.encode("ascii", "ignore").decode() or "kioxia_1min.csv"
+        return Response(
+            body,
+            media_type="text/csv; charset=utf-8",
+            headers={
+                "Cache-Control": "private, no-store",
+                "Content-Disposition": f'attachment; filename="{safe_ascii_name}"',
+            },
+        )
+    except JQuantsError as exc:
+        return PlainTextResponse(str(exc), status_code=502)
 
 
 @mcp.custom_route("/oneoff-kioxia-1min", methods=["GET"])
