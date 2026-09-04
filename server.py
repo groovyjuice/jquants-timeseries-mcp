@@ -27,8 +27,10 @@ from jquants_client import (
     aggregate_minute_bars_30m,
     daily_bars_to_csv,
     intraday_bars_to_csv,
+    minute_bars_to_csv,
     make_csv_filename,
     make_intraday_csv_filename,
+    make_minute_csv_filename,
     normalize_date,
 )
 
@@ -284,6 +286,96 @@ def get_stock_timeseries(
     except JQuantsError as exc:
         raise ToolError(str(exc)) from exc
 
+
+
+@mcp.tool(
+    name="get_stock_1min_timeseries",
+    title="日本株の1分足データを取得",
+    description=(
+        "銘柄名または4/5桁の銘柄コードからJ-Quants API V2の1分足OHLCVを取得し、"
+        "集計せずそのままUTF-8 CSVとして返す。分足・ティックアドオンの契約が必要。"
+    ),
+    annotations=INTRADAY_READ_ONLY,
+)
+def get_stock_1min_timeseries(
+    stock: str,
+    from_date: str | None = None,
+    to_date: str | None = None,
+) -> CallToolResult:
+    try:
+        client = JQuantsClient(os.environ.get("JQUANTS_API_KEY", ""))
+        candidates = client.search_companies(stock, limit=10)
+        if not candidates:
+            return _plain_result({
+                "status": "not_found",
+                "query": stock,
+                "message": "一致する上場銘柄が見つからへんかったで。銘柄コードも試してな。",
+                "candidates": [],
+            })
+
+        best_rank = candidates[0].rank
+        best = [candidate for candidate in candidates if candidate.rank == best_rank]
+        if len(best) != 1:
+            return _plain_result({
+                "status": "ambiguous",
+                "query": stock,
+                "message": "候補が複数あるため、銘柄コードを選んでな。",
+                "candidates": [candidate.public_dict() for candidate in best],
+            })
+
+        company = best[0]
+        rows = client.get_minute_bars(
+            company.code,
+            from_date=from_date,
+            to_date=to_date,
+        )
+        if not rows:
+            return _plain_result({
+                "status": "no_data",
+                "query": stock,
+                "company": company.public_dict(),
+                "message": (
+                    "指定範囲で取得できる1分足がなかったで。"
+                    "分足・ティックアドオンと取得期間を確認してな。"
+                ),
+            })
+
+        first_date = str(rows[0].get("Date") or "unknown")
+        last_date = str(rows[-1].get("Date") or "unknown")
+        csv_text = minute_bars_to_csv(rows, company.name)
+        warnings = [
+            "J-Quantsの1分足を集計せずそのままCSV化してるで。",
+            "取引がなかった1分間はJ-Quantsの返却対象外やで。",
+            "分足APIには調整済み株価がないため、株式分割・併合がある期間は別途補正が必要やで。",
+        ]
+        payload: dict[str, Any] = {
+            "status": "ok",
+            "query": stock,
+            "company": company.public_dict(),
+            "interval_minutes": 1,
+            "row_count": len(rows),
+            "first_date": first_date,
+            "last_date": last_date,
+            "first_timestamp_jst": f"{first_date} {rows[0].get('Time') or ''}",
+            "last_timestamp_jst": f"{last_date} {rows[-1].get('Time') or ''}",
+            "filename": make_minute_csv_filename(
+                company.name, first_date, last_date
+            ),
+            "series_name": "1分足",
+            "mime_type": "text/csv; charset=utf-8",
+            "preview_first": rows[:3],
+            "preview_last": rows[-3:],
+            "drive_destination": {
+                "folder_id": DRIVE_FOLDER_ID,
+                "folder_url": DRIVE_FOLDER_URL,
+                "folder_name": "時系列データ",
+            },
+            "warnings": warnings,
+            "source": "https://jpx-jquants.com/ja/spec/eq-bars-minute",
+        }
+        return _csv_result(payload, csv_text)
+    except JQuantsError as exc:
+        raise ToolError(str(exc)) from exc
 
 @mcp.tool(
     name="get_stock_30min_timeseries",
