@@ -20,6 +20,7 @@ from mcp_types import (
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse, Response
 
+from closing_auction import summarize_closing_auction
 from jquants_client import (
     JQuantsClient,
     JQuantsError,
@@ -396,6 +397,75 @@ def get_stock_30min_timeseries(
     except JQuantsError as exc:
         raise ToolError(str(exc)) from exc
 
+
+
+@mcp.tool(
+    name="analyze_closing_auction_gap",
+    title="大引けクロージングオークションと翌朝ギャップを分析",
+    description=(
+        "J-Quants API V2の1分足を使い、15:30のクロージングオークション約定が"
+        "直前の最終約定から上に跳ねた日・下に落ちた日で、翌営業日寄り付きまでの"
+        "夜間ギャップ平均・中央値・勝率・単利合計・相関を比較する。"
+    ),
+    annotations=INTRADAY_READ_ONLY,
+)
+def analyze_closing_auction_gap(
+    stock: str,
+    from_date: str | None = None,
+    to_date: str | None = None,
+) -> CallToolResult:
+    try:
+        client = JQuantsClient(os.environ.get("JQUANTS_API_KEY", ""))
+        candidates = client.search_companies(stock, limit=10)
+        if not candidates:
+            return _plain_result({
+                "status": "not_found",
+                "query": stock,
+                "message": "一致する上場銘柄が見つからへんかったで。銘柄コードも試してな。",
+                "candidates": [],
+            })
+
+        best_rank = candidates[0].rank
+        best = [candidate for candidate in candidates if candidate.rank == best_rank]
+        if len(best) != 1:
+            return _plain_result({
+                "status": "ambiguous",
+                "query": stock,
+                "message": "候補が複数あるため、銘柄コードを選んでな。",
+                "candidates": [candidate.public_dict() for candidate in best],
+            })
+
+        company = best[0]
+        minute_rows = client.get_minute_bars(
+            company.code,
+            from_date=from_date,
+            to_date=to_date,
+        )
+        if not minute_rows:
+            return _plain_result({
+                "status": "no_data",
+                "query": stock,
+                "company": company.public_dict(),
+                "message": "指定範囲で取得できる1分足がなかったで。",
+            })
+
+        summary = summarize_closing_auction(minute_rows)
+        payload = {
+            "status": "ok",
+            "query": stock,
+            "company": company.public_dict(),
+            "raw_minute_row_count": len(minute_rows),
+            "first_date": str(minute_rows[0].get("Date") or ""),
+            "last_date": str(minute_rows[-1].get("Date") or ""),
+            **summary,
+            "source": "https://jpx-jquants.com/ja/spec/eq-bars-minute",
+        }
+        return CallToolResult(
+            content=[TextContent(text=f"{company.name}のクロージングオークションと翌朝ギャップを集計したで。")],
+            structuredContent=payload,
+        )
+    except JQuantsError as exc:
+        raise ToolError(str(exc)) from exc
 
 def _transport_security() -> TransportSecuritySettings:
     external_host = os.environ.get("RENDER_EXTERNAL_HOSTNAME", "").strip()
