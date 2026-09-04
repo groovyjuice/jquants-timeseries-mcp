@@ -393,14 +393,23 @@ def get_stock_30min_timeseries(
     from_date: str | None = None,
     to_date: str | None = None,
 ) -> CallToolResult:
-    """J-Quantsの1分足を30分足へ集計し、CSVファイル参照を返します。"""
+    """J-Quantsの1分足を30分足へ集計。stockに「1分足」があれば生1分足CSVを返す。"""
     try:
+        wants_raw_1m = re.search(r"(?:1\\s*分(?:足)?|1\\s*(?:m|min|minute)s?)", stock, re.I) is not None
+        stock_query = re.sub(
+            r"(?i)(?:1\\s*分(?:足)?|1\\s*(?:m|min|minute)s?)",
+            " ",
+            stock,
+        )
+        stock_query = re.sub(r"[|/,:：、]+", " ", stock_query)
+        stock_query = re.sub(r"\\s+", " ", stock_query).strip() or stock.strip()
+
         client = JQuantsClient(os.environ.get("JQUANTS_API_KEY", ""))
-        candidates = client.search_companies(stock, limit=10)
+        candidates = client.search_companies(stock_query, limit=10)
         if not candidates:
             return _plain_result({
                 "status": "not_found",
-                "query": stock,
+                "query": stock_query,
                 "message": "一致する上場銘柄が見つからへんかったで。銘柄コードも試してな。",
                 "candidates": [],
             })
@@ -410,7 +419,7 @@ def get_stock_30min_timeseries(
         if len(best) != 1:
             return _plain_result({
                 "status": "ambiguous",
-                "query": stock,
+                "query": stock_query,
                 "message": "候補が複数あるため、銘柄コードを選んでな。",
                 "candidates": [candidate.public_dict() for candidate in best],
             })
@@ -424,7 +433,7 @@ def get_stock_30min_timeseries(
         if not minute_rows:
             return _plain_result({
                 "status": "no_data",
-                "query": stock,
+                "query": stock_query,
                 "company": company.public_dict(),
                 "message": (
                     "指定範囲で取得できる1分足がなかったで。"
@@ -432,11 +441,46 @@ def get_stock_30min_timeseries(
                 ),
             })
 
+        if wants_raw_1m:
+            first_date = str(minute_rows[0].get("Date") or "unknown")
+            last_date = str(minute_rows[-1].get("Date") or "unknown")
+            csv_text = minute_bars_to_csv(minute_rows, company.name)
+            payload: dict[str, Any] = {
+                "status": "ok",
+                "query": stock_query,
+                "company": company.public_dict(),
+                "interval_minutes": 1,
+                "row_count": len(minute_rows),
+                "first_date": first_date,
+                "last_date": last_date,
+                "first_timestamp_jst": f"{first_date} {minute_rows[0].get('Time') or ''}",
+                "last_timestamp_jst": f"{last_date} {minute_rows[-1].get('Time') or ''}",
+                "filename": make_minute_csv_filename(
+                    company.name, first_date, last_date
+                ),
+                "series_name": "1分足",
+                "mime_type": "text/csv; charset=utf-8",
+                "preview_first": minute_rows[:3],
+                "preview_last": minute_rows[-3:],
+                "drive_destination": {
+                    "folder_id": DRIVE_FOLDER_ID,
+                    "folder_url": DRIVE_FOLDER_URL,
+                    "folder_name": "時系列データ",
+                },
+                "warnings": [
+                    "J-Quantsの1分足を集計せずそのままCSV化してるで。",
+                    "取引がなかった1分間はJ-Quantsの返却対象外やで。",
+                    "分足APIには調整済み株価がないため、株式分割・併合がある期間は別途補正が必要やで。",
+                ],
+                "source": "https://jpx-jquants.com/ja/spec/eq-bars-minute",
+            }
+            return _csv_result(payload, csv_text)
+
         rows = aggregate_minute_bars_30m(minute_rows)
         if not rows:
             return _plain_result({
                 "status": "no_data",
-                "query": stock,
+                "query": stock_query,
                 "company": company.public_dict(),
                 "message": "通常取引時間内で30分足に集計できる分足がなかったで。",
             })
@@ -456,7 +500,7 @@ def get_stock_30min_timeseries(
         csv_text = intraday_bars_to_csv(rows, company.name)
         payload: dict[str, Any] = {
             "status": "ok",
-            "query": stock,
+            "query": stock_query,
             "company": company.public_dict(),
             "interval_minutes": 30,
             "raw_minute_row_count": len(minute_rows),
@@ -488,7 +532,6 @@ def get_stock_30min_timeseries(
         return _csv_result(payload, csv_text)
     except JQuantsError as exc:
         raise ToolError(str(exc)) from exc
-
 
 
 @mcp.tool(
