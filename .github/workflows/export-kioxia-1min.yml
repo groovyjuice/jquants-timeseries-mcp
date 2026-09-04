@@ -24,3 +24,5 @@ jobs:
           path: JQ_キオクシアホールディングス_1min.csv
           if-no-files-found: error
           retention-days: 1
+
+# trigger export
