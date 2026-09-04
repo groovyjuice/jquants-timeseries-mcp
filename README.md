@@ -85,6 +85,3 @@ Freeプランでは、取得できる株価は直近12週間を除く過去2年�
 
 利用にはLight以上のベースプランと、株価分足・ティックアドオンが必要です。
 分足の取得可能期間は過去2年間で、調整済み株価は含まれません。
-
-
-Temporary Kioxia 1-minute export: https://jquants-timeseries-mcp.onrender.com/tmp-kioxia-1min-7b42e5f1
