@@ -367,6 +367,41 @@ def make_csv_filename(company_name: str, first_date: str, last_date: str) -> str
     return f"JQ_{name}_{first_date}_{last_date}.csv"
 
 
+
+MINUTE_CSV_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("Date", "Date"),
+    ("Time", "TimeJST"),
+    ("Code", "Code"),
+    ("CompanyName", "CompanyName"),
+    ("O", "Open"),
+    ("H", "High"),
+    ("L", "Low"),
+    ("C", "Close"),
+    ("Vo", "Volume"),
+    ("Va", "TurnoverValue"),
+)
+
+
+def minute_bars_to_csv(rows: Iterable[dict[str, Any]], company_name: str) -> str:
+    output = io.StringIO(newline="")
+    writer = csv.DictWriter(
+        output, fieldnames=[label for _, label in MINUTE_CSV_COLUMNS]
+    )
+    writer.writeheader()
+    for row in rows:
+        converted: dict[str, Any] = {}
+        for source, label in MINUTE_CSV_COLUMNS:
+            converted[label] = company_name if source == "CompanyName" else row.get(source)
+        writer.writerow(converted)
+    return "\ufeff" + output.getvalue()
+
+
+def make_minute_csv_filename(
+    company_name: str, first_date: str, last_date: str
+) -> str:
+    name = sanitize_filename_component(company_name)
+    return f"JQ_{name}_1min_{first_date}_{last_date}.csv"
+
 def _minute_bucket(time_value: Any) -> tuple[str, str] | None:
     match = re.fullmatch(r"(\d{2}):(\d{2})(?::\d{2})?", str(time_value or ""))
     if match is None:
