@@ -1,0 +1,11 @@
+{
+  "scenes": [
+    {
+      "from": 0,
+      "duration": 30,
+      "title": "Drive/Astra入力テスト",
+      "body": "外部JSONから動画の文言を差し替えられました",
+      "emotion": "surprise"
+    }
+  ]
+}
