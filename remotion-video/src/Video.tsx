@@ -19,6 +19,7 @@ export type VideoProps = {
 const avatarAssets = {
   normalBase: staticFile('character/normal_base.png'),
   seriousBase: staticFile('character/serious_base.png'),
+  surpriseBase: staticFile('character/surprise_base.png'),
   eyesOpen: staticFile('character/eyes_open.png'),
   eyesBlink: staticFile('character/eyes_blink.png'),
   eyesSurprise: staticFile('character/eyes_surprise.png'),
@@ -43,14 +44,15 @@ const AvatarLayer: React.FC<{src: string}> = ({src}) => (
 const Avatar: React.FC<{emotion: Scene['emotion']}> = ({emotion}) => {
   const frame = useCurrentFrame();
 
-  // Deterministic, subtle body motion.
+  // Subtle deterministic body motion.
   const bob = Math.sin(frame / 11) * 4;
 
-  // One short blink about every 4 seconds.
+  // Smile keeps the eyes closed continuously, so no blink animation is applied.
+  const isSmile = emotion === 'smile';
   const blinkPhase = frame % 120;
-  const isBlinking = blinkPhase >= 114 && blinkPhase <= 118;
+  const isBlinking = !isSmile && blinkPhase >= 114 && blinkPhase <= 118;
 
-  // Simple 3-state mouth cycle: closed -> half -> open -> half.
+  // Prototype mouth animation: closed -> half -> open -> half.
   const mouthPhase = frame % 12;
   const mouthSrc =
     mouthPhase < 3
@@ -64,14 +66,18 @@ const Avatar: React.FC<{emotion: Scene['emotion']}> = ({emotion}) => {
   const baseSrc =
     emotion === 'serious'
       ? avatarAssets.seriousBase
-      : avatarAssets.normalBase;
+      : emotion === 'surprise'
+        ? avatarAssets.surpriseBase
+        : avatarAssets.normalBase;
 
   const eyesSrc =
-    emotion === 'surprise'
-      ? avatarAssets.eyesSurprise
+    isSmile
+      ? avatarAssets.eyesBlink
       : isBlinking
         ? avatarAssets.eyesBlink
-        : avatarAssets.eyesOpen;
+        : emotion === 'surprise'
+          ? avatarAssets.eyesSurprise
+          : avatarAssets.eyesOpen;
 
   return (
     <div
