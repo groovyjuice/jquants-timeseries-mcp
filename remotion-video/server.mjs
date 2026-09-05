@@ -5,6 +5,7 @@ import {createReadStream} from 'node:fs';
 import {stat, mkdir, writeFile, unlink} from 'node:fs/promises';
 import path from 'node:path';
 import {planScenes} from './planner.mjs';
+import {readGoogleDocText} from './drive.mjs';
 
 const execFileAsync = promisify(execFile);
 const port = Number(process.env.PORT || 10000);
@@ -99,10 +100,22 @@ const streamVideo = async (output, res, filename) => {
   createReadStream(output).pipe(res);
 };
 
+const isAuthorized = (req) => {
+  const expected = process.env.VIDEO_API_TOKEN;
+  if (!expected) return false;
+  return req.headers.authorization === `Bearer ${expected}`;
+};
+
 const server = http.createServer(async (req, res) => {
   if (req.url === '/health') {
     res.writeHead(200, {'content-type': 'application/json'});
     res.end(JSON.stringify({ok: true}));
+    return;
+  }
+
+  if (!isAuthorized(req)) {
+    res.writeHead(401, {'content-type': 'application/json'});
+    res.end(JSON.stringify({ok: false, error: 'Unauthorized'}));
     return;
   }
 
@@ -115,6 +128,36 @@ const server = http.createServer(async (req, res) => {
     } catch (error) {
       console.error('Runtime smoke test failed:', error);
       res.writeHead(500, {'content-type': 'application/json'});
+      res.end(JSON.stringify({ok: false, error: String(error)}));
+    }
+    return;
+  }
+
+  if (req.url === '/plan-drive' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req);
+      const doc = await readGoogleDocText(body.documentId);
+      const result = await planScenes(doc.script);
+      res.writeHead(200, {'content-type': 'application/json; charset=utf-8'});
+      res.end(JSON.stringify({ok: true, document: {id: doc.documentId, title: doc.title}, ...result}, null, 2));
+    } catch (error) {
+      console.error('Drive scene planning failed:', error);
+      res.writeHead(400, {'content-type': 'application/json'});
+      res.end(JSON.stringify({ok: false, error: String(error)}));
+    }
+    return;
+  }
+
+  if (req.url === '/render-drive' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req);
+      const doc = await readGoogleDocText(body.documentId);
+      const result = await planScenes(doc.script);
+      const output = await renderVideo('TestVideo', 'drive-script-test.mp4', result.props);
+      await streamVideo(output, res, 'drive-script-test.mp4');
+    } catch (error) {
+      console.error('Drive script render failed:', error);
+      res.writeHead(400, {'content-type': 'application/json'});
       res.end(JSON.stringify({ok: false, error: String(error)}));
     }
     return;
@@ -174,7 +217,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   res.writeHead(200, {'content-type': 'text/plain; charset=utf-8'});
-  res.end('Remotion prototype: GET /render-test, POST /plan-scenes, POST /render-script, POST /render-json');
+  res.end('Remotion prototype: authenticated API');
 });
 
 server.listen(port, () => {
