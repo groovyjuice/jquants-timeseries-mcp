@@ -113,6 +113,17 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.url === '/demo.mp4' && req.method === 'GET') {
+    try {
+      const output = path.join(outDir, 'demo.mp4');
+      await streamVideo(output, res, 'demo.mp4');
+    } catch (error) {
+      res.writeHead(404, {'content-type': 'application/json'});
+      res.end(JSON.stringify({ok: false, error: 'Demo video not available'}));
+    }
+    return;
+  }
+
   if (!isAuthorized(req)) {
     res.writeHead(401, {'content-type': 'application/json'});
     res.end(JSON.stringify({ok: false, error: 'Unauthorized'}));
