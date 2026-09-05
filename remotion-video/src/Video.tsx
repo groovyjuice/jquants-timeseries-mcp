@@ -1,3 +1,6 @@
+import '@fontsource/noto-sans-jp/400.css';
+import '@fontsource/noto-sans-jp/700.css';
+import '@fontsource/noto-sans-jp/800.css';
 import React from 'react';
 import {
   AbsoluteFill,
@@ -37,7 +40,7 @@ const Avatar: React.FC<{emotion: Scene['emotion']}> = ({emotion}) => {
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        fontFamily: 'sans-serif',
+        fontFamily: "'Noto Sans JP', sans-serif",
         boxShadow: '0 20px 60px rgba(0,0,0,0.22)',
       }}
     >
@@ -63,7 +66,7 @@ const SceneCard: React.FC<{
       style={{
         background: 'linear-gradient(135deg, #101624 0%, #24324d 100%)',
         color: 'white',
-        fontFamily: 'sans-serif',
+        fontFamily: "'Noto Sans JP', sans-serif",
         padding: 120,
       }}
     >
