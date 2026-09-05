@@ -5,14 +5,22 @@ import {
   interpolate,
   useCurrentFrame,
 } from 'remotion';
-import {scenes} from './scenes';
+import {scenes as defaultScenes, type Scene} from './scenes';
 
-const Avatar: React.FC<{emotion: 'normal' | 'surprise' | 'serious'}> = ({emotion}) => {
+export type VideoProps = {
+  scenes?: Scene[];
+};
+
+const Avatar: React.FC<{emotion: Scene['emotion']}> = ({emotion}) => {
   const frame = useCurrentFrame();
   const bob = Math.sin(frame / 8) * 6;
   const talking = frame % 10 < 5;
   const mouth = talking ? '●' : '―';
-  const eyes = emotion === 'surprise' ? '◉ ◉' : emotion === 'serious' ? '• •' : '◕ ◕';
+  const eyes =
+    emotion === 'surprise' ? '◉ ◉' :
+    emotion === 'serious' ? '• •' :
+    '◕ ◕';
+
   return (
     <div
       style={{
@@ -40,9 +48,16 @@ const Avatar: React.FC<{emotion: 'normal' | 'surprise' | 'serious'}> = ({emotion
   );
 };
 
-const SceneCard: React.FC<{title: string; body: string; emotion: 'normal' | 'surprise' | 'serious'}> = ({title, body, emotion}) => {
+const SceneCard: React.FC<{
+  title: string;
+  body: string;
+  emotion: Scene['emotion'];
+}> = ({title, body, emotion}) => {
   const frame = useCurrentFrame();
-  const opacity = interpolate(frame, [0, 15], [0, 1], {extrapolateRight: 'clamp'});
+  const opacity = interpolate(frame, [0, 15], [0, 1], {
+    extrapolateRight: 'clamp',
+  });
+
   return (
     <AbsoluteFill
       style={{
@@ -76,12 +91,16 @@ const SceneCard: React.FC<{title: string; body: string; emotion: 'normal' | 'sur
   );
 };
 
-export const TestVideo: React.FC = () => {
+export const TestVideo: React.FC<VideoProps> = ({scenes = defaultScenes}) => {
   return (
     <AbsoluteFill>
       {scenes.map((scene, i) => (
         <Sequence key={i} from={scene.from} durationInFrames={scene.duration}>
-          <SceneCard title={scene.title} body={scene.body} emotion={scene.emotion} />
+          <SceneCard
+            title={scene.title}
+            body={scene.body}
+            emotion={scene.emotion}
+          />
         </Sequence>
       ))}
     </AbsoluteFill>
