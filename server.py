@@ -95,6 +95,39 @@ async def health(_: Request) -> PlainTextResponse:
     return PlainTextResponse("ok")
 
 
+@mcp.custom_route("/tmp-taiyo-yuden-1min-6976-a91f3c2e", methods=["GET"])
+async def temp_taiyo_yuden_1min(_: Request) -> Response:
+    try:
+        client = JQuantsClient(os.environ.get("JQUANTS_API_KEY", ""))
+        candidates = client.search_companies("6976", limit=10)
+        if not candidates:
+            return PlainTextResponse("Taiyo Yuden not found", status_code=404)
+        best_rank = candidates[0].rank
+        best = [candidate for candidate in candidates if candidate.rank == best_rank]
+        if len(best) != 1:
+            return PlainTextResponse("Taiyo Yuden ambiguous", status_code=409)
+        company = best[0]
+        rows = client.get_minute_bars(company.code)
+        if not rows:
+            return PlainTextResponse("No minute data", status_code=404)
+
+        first_date = str(rows[0].get("Date") or "unknown")
+        last_date = str(rows[-1].get("Date") or "unknown")
+        filename = make_minute_csv_filename(company.name, first_date, last_date)
+        body = minute_bars_to_csv(rows, company.name).encode("utf-8")
+        safe_ascii_name = filename.encode("ascii", "ignore").decode() or "taiyo_yuden_1min.csv"
+        return Response(
+            body,
+            media_type="text/csv; charset=utf-8",
+            headers={
+                "Cache-Control": "private, no-store",
+                "Content-Disposition": f'attachment; filename="{safe_ascii_name}"',
+            },
+        )
+    except JQuantsError as exc:
+        return PlainTextResponse(str(exc), status_code=502)
+
+
 @mcp.custom_route("/download/{download_id}", methods=["GET"])
 async def download_csv(request: Request) -> Response:
     now = time.monotonic()
