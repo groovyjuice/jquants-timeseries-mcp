@@ -4,8 +4,10 @@ import '@fontsource/noto-sans-jp/800.css';
 import React from 'react';
 import {
   AbsoluteFill,
+  Img,
   Sequence,
   interpolate,
+  staticFile,
   useCurrentFrame,
 } from 'remotion';
 import {scenes as defaultScenes, type Scene} from './scenes';
@@ -14,39 +16,78 @@ export type VideoProps = {
   scenes?: Scene[];
 };
 
+const avatarAssets = {
+  normalBase: staticFile('character/normal_base.png'),
+  seriousBase: staticFile('character/serious_base.png'),
+  eyesOpen: staticFile('character/eyes_open.png'),
+  eyesBlink: staticFile('character/eyes_blink.png'),
+  eyesSurprise: staticFile('character/eyes_surprise.png'),
+  mouthClosed: staticFile('character/mouth_closed.png'),
+  mouthHalf: staticFile('character/mouth_half.png'),
+  mouthOpen: staticFile('character/mouth_open.png'),
+};
+
+const AvatarLayer: React.FC<{src: string}> = ({src}) => (
+  <Img
+    src={src}
+    style={{
+      position: 'absolute',
+      inset: 0,
+      width: '100%',
+      height: '100%',
+      objectFit: 'contain',
+    }}
+  />
+);
+
 const Avatar: React.FC<{emotion: Scene['emotion']}> = ({emotion}) => {
   const frame = useCurrentFrame();
-  const bob = Math.sin(frame / 8) * 6;
-  const talking = frame % 10 < 5;
-  const mouth = talking ? '●' : '―';
-  const eyes =
-    emotion === 'surprise' ? '◉ ◉' :
-    emotion === 'serious' ? '• •' :
-    '◕ ◕';
+
+  // Deterministic, subtle body motion.
+  const bob = Math.sin(frame / 11) * 4;
+
+  // One short blink about every 4 seconds.
+  const blinkPhase = frame % 120;
+  const isBlinking = blinkPhase >= 114 && blinkPhase <= 118;
+
+  // Simple 3-state mouth cycle: closed -> half -> open -> half.
+  const mouthPhase = frame % 12;
+  const mouthSrc =
+    mouthPhase < 3
+      ? avatarAssets.mouthClosed
+      : mouthPhase < 6
+        ? avatarAssets.mouthHalf
+        : mouthPhase < 9
+          ? avatarAssets.mouthOpen
+          : avatarAssets.mouthHalf;
+
+  const baseSrc =
+    emotion === 'serious'
+      ? avatarAssets.seriousBase
+      : avatarAssets.normalBase;
+
+  const eyesSrc =
+    emotion === 'surprise'
+      ? avatarAssets.eyesSurprise
+      : isBlinking
+        ? avatarAssets.eyesBlink
+        : avatarAssets.eyesOpen;
 
   return (
     <div
       style={{
         position: 'absolute',
-        right: 90,
-        bottom: 120,
-        width: 320,
-        height: 320,
-        borderRadius: 999,
-        background: 'rgba(255,255,255,0.94)',
-        border: '10px solid rgba(0,0,0,0.12)',
+        right: 48,
+        bottom: 108,
+        width: 500,
+        height: 500,
         transform: `translateY(${bob}px)`,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontFamily: "'Noto Sans JP', sans-serif",
-        boxShadow: '0 20px 60px rgba(0,0,0,0.22)',
+        filter: 'drop-shadow(0 18px 28px rgba(0,0,0,0.28))',
       }}
     >
-      <div style={{fontSize: 70, letterSpacing: 28, marginLeft: 28}}>{eyes}</div>
-      <div style={{fontSize: 72, marginTop: 20}}>{mouth}</div>
-      <div style={{fontSize: 30, marginTop: 20}}>Vキャラ仮</div>
+      <AvatarLayer src={baseSrc} />
+      <AvatarLayer src={eyesSrc} />
+      <AvatarLayer src={mouthSrc} />
     </div>
   );
 };
@@ -70,11 +111,13 @@ const SceneCard: React.FC<{
         padding: 120,
       }}
     >
-      <div style={{opacity, maxWidth: 1200}}>
+      <div style={{opacity, maxWidth: 1160}}>
         <div style={{fontSize: 94, fontWeight: 800, lineHeight: 1.1}}>{title}</div>
         <div style={{fontSize: 50, marginTop: 48, lineHeight: 1.5}}>{body}</div>
       </div>
+
       <Avatar emotion={emotion} />
+
       <div
         style={{
           position: 'absolute',
@@ -86,6 +129,7 @@ const SceneCard: React.FC<{
           borderRadius: 20,
           background: 'rgba(0,0,0,0.55)',
           textAlign: 'center',
+          zIndex: 20,
         }}
       >
         {body}
