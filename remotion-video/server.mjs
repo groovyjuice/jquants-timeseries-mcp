@@ -56,12 +56,4 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(port, () => {
   console.log(`Listening on :${port}`);
-  renderVideo('SmokeTest', 'smoke.mp4')
-    .then(async (output) => {
-      const data = await readFile(output);
-      console.log(`REMOTION_SELF_TEST_OK bytes=${data.length}`);
-    })
-    .catch((error) => {
-      console.error('REMOTION_SELF_TEST_FAILED', error);
-    });
 });
