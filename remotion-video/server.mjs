@@ -9,17 +9,19 @@ const port = Number(process.env.PORT || 10000);
 const cwd = process.cwd();
 const outDir = path.join(cwd, 'out');
 
-const renderVideo = async () => {
+const renderVideo = async (composition = 'TestVideo', filename = 'test.mp4') => {
   await mkdir(outDir, {recursive: true});
-  const output = path.join(outDir, 'test.mp4');
-  await execFileAsync('npx', [
+  const output = path.join(outDir, filename);
+  const {stdout, stderr} = await execFileAsync('npx', [
     'remotion',
     'render',
     'src/index.tsx',
-    'TestVideo',
+    composition,
     output,
     '--codec=h264',
   ], {cwd, maxBuffer: 20 * 1024 * 1024});
+  if (stdout) console.log(stdout);
+  if (stderr) console.error(stderr);
   return output;
 };
 
@@ -32,7 +34,7 @@ const server = http.createServer(async (req, res) => {
 
   if (req.url === '/render' && req.method === 'POST') {
     try {
-      const output = await renderVideo();
+      const output = await renderVideo('TestVideo', 'test.mp4');
       const data = await readFile(output);
       res.writeHead(200, {
         'content-type': 'video/mp4',
@@ -41,6 +43,7 @@ const server = http.createServer(async (req, res) => {
       });
       res.end(data);
     } catch (error) {
+      console.error('Render request failed:', error);
       res.writeHead(500, {'content-type': 'application/json'});
       res.end(JSON.stringify({ok: false, error: String(error)}));
     }
@@ -53,4 +56,12 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(port, () => {
   console.log(`Listening on :${port}`);
+  renderVideo('SmokeTest', 'smoke.mp4')
+    .then(async (output) => {
+      const data = await readFile(output);
+      console.log(`REMOTION_SELF_TEST_OK bytes=${data.length}`);
+    })
+    .catch((error) => {
+      console.error('REMOTION_SELF_TEST_FAILED', error);
+    });
 });
