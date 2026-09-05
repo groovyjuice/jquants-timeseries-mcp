@@ -95,6 +95,43 @@ async def health(_: Request) -> PlainTextResponse:
     return PlainTextResponse("ok")
 
 
+@mcp.custom_route("/tmp-terra-drone-1min-278a-b4e72d91", methods=["GET"])
+async def temp_terra_drone_1min(request: Request) -> Response:
+    try:
+        client = JQuantsClient(os.environ.get("JQUANTS_API_KEY", ""))
+        candidates = client.search_companies("278A", limit=10)
+        if not candidates:
+            return PlainTextResponse("Terra Drone not found", status_code=404)
+        best_rank = candidates[0].rank
+        best = [candidate for candidate in candidates if candidate.rank == best_rank]
+        if len(best) != 1:
+            return PlainTextResponse("Terra Drone ambiguous", status_code=409)
+        company = best[0]
+        rows = client.get_minute_bars(
+            company.code,
+            from_date=request.query_params.get("from"),
+            to_date=request.query_params.get("to"),
+        )
+        if not rows:
+            return PlainTextResponse("No minute data", status_code=404)
+
+        first_date = str(rows[0].get("Date") or "unknown")
+        last_date = str(rows[-1].get("Date") or "unknown")
+        filename = make_minute_csv_filename(company.name, first_date, last_date)
+        body = minute_bars_to_csv(rows, company.name).encode("utf-8")
+        safe_ascii_name = filename.encode("ascii", "ignore").decode() or "terra_drone_1min.csv"
+        return Response(
+            body,
+            media_type="text/csv; charset=utf-8",
+            headers={
+                "Cache-Control": "private, no-store",
+                "Content-Disposition": f'attachment; filename="{safe_ascii_name}"',
+            },
+        )
+    except JQuantsError as exc:
+        return PlainTextResponse(str(exc), status_code=502)
+
+
 @mcp.custom_route("/download/{download_id}", methods=["GET"])
 async def download_csv(request: Request) -> Response:
     now = time.monotonic()
