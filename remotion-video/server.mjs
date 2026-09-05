@@ -4,6 +4,7 @@ import {promisify} from 'node:util';
 import {createReadStream} from 'node:fs';
 import {stat, mkdir, writeFile, unlink} from 'node:fs/promises';
 import path from 'node:path';
+import {planScenes} from './planner.mjs';
 
 const execFileAsync = promisify(execFile);
 const port = Number(process.env.PORT || 10000);
@@ -119,6 +120,34 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.url === '/plan-scenes' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req);
+      const result = await planScenes(body.script);
+      res.writeHead(200, {'content-type': 'application/json; charset=utf-8'});
+      res.end(JSON.stringify({ok: true, ...result}, null, 2));
+    } catch (error) {
+      console.error('Scene planning failed:', error);
+      res.writeHead(400, {'content-type': 'application/json'});
+      res.end(JSON.stringify({ok: false, error: String(error)}));
+    }
+    return;
+  }
+
+  if (req.url === '/render-script' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req);
+      const result = await planScenes(body.script);
+      const output = await renderVideo('TestVideo', 'script-test.mp4', result.props);
+      await streamVideo(output, res, 'script-test.mp4');
+    } catch (error) {
+      console.error('Script render failed:', error);
+      res.writeHead(400, {'content-type': 'application/json'});
+      res.end(JSON.stringify({ok: false, error: String(error)}));
+    }
+    return;
+  }
+
   if (req.url === '/render-json' && req.method === 'POST') {
     try {
       const props = validateProps(await readJsonBody(req));
@@ -145,7 +174,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   res.writeHead(200, {'content-type': 'text/plain; charset=utf-8'});
-  res.end('Remotion prototype: GET /render-test, POST /render, POST /render-json');
+  res.end('Remotion prototype: GET /render-test, POST /plan-scenes, POST /render-script, POST /render-json');
 });
 
 server.listen(port, () => {
