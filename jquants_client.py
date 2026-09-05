@@ -59,10 +59,12 @@ def normalize_date(value: str | None) -> str | None:
 
 
 def normalize_code(value: str) -> str | None:
-    raw = unicodedata.normalize("NFKC", value).strip()
-    if not re.fullmatch(r"\d{4,5}", raw):
-        return None
-    return raw
+    raw = unicodedata.normalize("NFKC", value).strip().upper()
+    if re.fullmatch(r"\d{4,5}", raw):
+        return raw
+    if re.fullmatch(r"\d{3}[A-Z0-9]", raw):
+        return raw
+    return None
 
 
 def normalize_company_text(value: str) -> str:
