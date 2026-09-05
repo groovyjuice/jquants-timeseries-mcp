@@ -107,10 +107,18 @@ async def temp_taiyo_yuden_1min(request: Request) -> Response:
         if len(best) != 1:
             return PlainTextResponse("Taiyo Yuden ambiguous", status_code=409)
         company = best[0]
+        from_date = request.query_params.get("from")
+        to_date = request.query_params.get("to")
+        if not from_date or not to_date:
+            return Response(
+                "\ufeffDate,TimeJST,Code,CompanyName,Open,High,Low,Close,Volume,TurnoverValue\r\n".encode("utf-8"),
+                media_type="text/csv; charset=utf-8",
+                headers={"Cache-Control": "private, no-store"},
+            )
         rows = client.get_minute_bars(
             company.code,
-            from_date=request.query_params.get("from"),
-            to_date=request.query_params.get("to"),
+            from_date=from_date,
+            to_date=to_date,
         )
         if not rows:
             return PlainTextResponse("No minute data", status_code=404)
