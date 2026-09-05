@@ -1,0 +1,77 @@
+name: Temporary Terra Drone 1-minute export
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/tmp-terra-export.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Terra Drone 1-minute CSV from Render
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://jquants-timeseries-mcp.onrender.com/tmp-terra-drone-1min-278a-b4e72d91"
+          ok=0
+          for i in $(seq 1 30); do
+            code=$(curl -L -sS -o terra_drone_1min.csv -w "%{http_code}" "$url" || true)
+            if [ "$code" = "200" ] && [ -s terra_drone_1min.csv ]; then
+              ok=1
+              break
+            fi
+            sleep 5
+          done
+          if [ "$ok" != "1" ]; then
+            echo "Failed to download CSV"
+            exit 1
+          fi
+          wc -c terra_drone_1min.csv
+          head -n 3 terra_drone_1min.csv
+
+      - name: Build compact first-35-minutes CSV
+        shell: python
+        run: |
+          import csv
+          from pathlib import Path
+
+          src = Path("terra_drone_1min.csv")
+          dst = Path("terra_drone_first35m.csv")
+          with src.open("r", encoding="utf-8-sig", newline="") as f:
+              r = csv.DictReader(f)
+              rows = list(r)
+              fields = r.fieldnames
+
+          if not fields:
+              raise SystemExit("No CSV header")
+
+          def keep(row):
+              t = str(row.get("Time") or row.get("time") or "")
+              if not t:
+                  return False
+              hhmm = t[:5]
+              return "09:00" <= hhmm <= "09:35"
+
+          kept = [row for row in rows if keep(row)]
+          with dst.open("w", encoding="utf-8", newline="") as f:
+              w = csv.DictWriter(f, fieldnames=fields)
+              w.writeheader()
+              w.writerows(kept)
+
+          print(f"raw_rows={len(rows)} compact_rows={len(kept)}")
+
+      - name: Upload raw and compact CSV
+        uses: actions/upload-artifact@v4
+        with:
+          name: terra-drone-1min
+          path: |
+            terra_drone_1min.csv
+            terra_drone_first35m.csv
+          retention-days: 1
