@@ -1,13 +1,15 @@
 # J-Quants Timeseries MCP
 
-J-Quants API V2から日本株の日足または30分足を取得し、ChatGPTがGoogle Driveの
+J-Quants API V2から日本株の日足・1分足・30分足を取得し、ChatGPTがGoogle Driveの
 「時系列データ」フォルダへ保存できるCSVを返す個人用MCPサーバーです。
 
 ## 主な動作
 
 - 銘柄コードまたは会社名から上場銘柄を検索
 - `/v2/equities/bars/daily` の全ページを取得
-- `/v2/equities/bars/minute` の全ページを取得し、東証の前場・後場ごとに30分足へ集計
+- `/v2/equities/bars/minute` の全ページを取得し、1分足を集約せずCSV化
+- 同じ1分足を東証の前場・後場ごとに30分足へ集計
+- `get_stock_1min_timeseries` で生の1分足CSVを取得
 - `get_stock_timeseries` の `interval` で `daily` / `30m` を明示的に選択
 - 調整前・調整済みOHLCVとストップ高安フラグをCSV化
 - Renderの秘密設定から保存先フォルダIDを読み込み、ツール結果に含める
@@ -67,6 +69,18 @@ OAuth認証の代替になる強固な方式ではありません。漏えいし
 
 Freeプランでは、取得できる株価は直近12週間を除く過去2年分です。実際に返った
 `first_date` と `last_date` を確認してください。
+
+## 1分足
+
+`get_stock_1min_timeseries(stock="6857")` はJ-Quantsの1分足OHLCVを取得し、
+30分足などへ集約せず、そのままCSVとして返します。
+
+- CSV列: `Date`, `TimeJST`, `Code`, `CompanyName`, `Open`, `High`, `Low`, `Close`, `Volume`, `TurnoverValue`
+- ファイル名: `JQ_<銘柄名>_1min_<開始日>_<終了日>.csv`
+- 取引がなかった1分間は補完しない
+- 分足APIには調整済み株価がないため、株式分割・併合をまたぐ分析では別途補正が必要
+
+利用にはLight以上のベースプランと、株価分足・ティックアドオンが必要です。
 
 ## 30分足
 
