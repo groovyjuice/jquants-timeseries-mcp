@@ -20,6 +20,7 @@
     "react": "latest",
     "react-dom": "latest",
     "openai": "latest",
-    "googleapis": "latest"
+    "googleapis": "latest",
+    "@fontsource/noto-sans-jp": "latest"
   }
 }
