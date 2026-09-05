@@ -15,6 +15,8 @@ from jquants_client import (
     intraday_bars_to_csv,
     make_csv_filename,
     make_intraday_csv_filename,
+    make_minute_csv_filename,
+    minute_bars_to_csv,
     normalize_date,
 )
 
@@ -217,6 +219,24 @@ class JQuantsClientTests(unittest.TestCase):
                 "キオクシアホールディングス", 30, "2026-01-05", "2026-01-06"
             ),
             "JQ_キオクシアホールディングス_30min_2026-01-05_2026-01-06.csv",
+        )
+
+    def test_minute_csv_preserves_one_minute_rows_and_filename(self):
+        rows = self.client.get_minute_bars("285A0")
+        text = minute_bars_to_csv(rows, "キオクシアホールディングス")
+        parsed = list(csv.DictReader(io.StringIO(text.lstrip("\ufeff"))))
+        self.assertEqual(
+            [row["TimeJST"] for row in parsed],
+            ["09:00", "09:29", "09:30"],
+        )
+        self.assertEqual(parsed[0]["CompanyName"], "キオクシアホールディングス")
+        self.assertEqual(
+            make_minute_csv_filename(
+                "キオクシアホールディングス",
+                "2026-01-05",
+                "2026-01-06",
+            ),
+            "JQ_キオクシアホールディングス_1min_2026-01-05_2026-01-06.csv",
         )
 
     def test_date_validation(self):
