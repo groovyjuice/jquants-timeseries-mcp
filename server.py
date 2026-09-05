@@ -50,6 +50,7 @@ _downloads: dict[str, tuple[float, str, bytes]] = {}
 SERVER_INSTRUCTIONS = f"""
 日本株の日足・30分足取得にはget_stock_timeseriesを使い、intervalへ
 日足ならdaily、J-Quantsの1分足から30分足へ集計する場合は30mを指定する。
+J-Quantsの1分足を集約せずCSV出力する場合はget_stock_1min_timeseriesを使う。
 get_stock_30min_timeseriesも30分足専用の互換ツールとして利用できる。成功時はCSVの
 resource_linkとembedded resourceを返す。Google Driveのupload_fileにそのCSV
 ファイル参照をfile_uriとして渡し、「時系列データ」フォルダ
@@ -66,9 +67,9 @@ get_stock_timeseriesのstockへ「1570 30分足」のように30分足指定を�
 mcp = MCPServer(
     name="jquants-timeseries",
     title="J-Quants時系列データ",
-    description="J-Quants API V2から日本株の日足または1分足由来の30分足を取得してCSV化します。",
+    description="J-Quants API V2から日本株の日足・生1分足・1分足由来の30分足を取得してCSV化します。",
     instructions=SERVER_INSTRUCTIONS,
-    version="1.2.0",
+    version="1.3.0",
 )
 
 
@@ -81,7 +82,7 @@ READ_ONLY = ToolAnnotations(
 )
 
 INTRADAY_READ_ONLY = ToolAnnotations(
-    title="J-Quantsの30分足を取得",
+    title="J-Quantsの分足を取得",
     readOnlyHint=True,
     destructiveHint=False,
     idempotentHint=True,
