@@ -85,4 +85,14 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(port, () => {
   console.log(`Listening on :${port}`);
+  if (process.env.RUN_RUNTIME_SMOKE === '1') {
+    renderVideo('SmokeTest', 'startup-runtime-smoke.mp4')
+      .then(async (output) => {
+        const fileStat = await stat(output);
+        console.log(`REMOTION_RUNTIME_SMOKE_OK bytes=${fileStat.size}`);
+      })
+      .catch((error) => {
+        console.error('REMOTION_RUNTIME_SMOKE_FAILED', error);
+      });
+  }
 });
