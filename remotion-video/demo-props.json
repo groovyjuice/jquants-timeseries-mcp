@@ -1,0 +1,25 @@
+{
+  "scenes": [
+    {
+      "from": 0,
+      "duration": 300,
+      "title": "キオクシア",
+      "body": "今回はキオクシアの株価について見ていきます。",
+      "emotion": "normal"
+    },
+    {
+      "from": 300,
+      "duration": 300,
+      "title": "半導体株に資金流入",
+      "body": "半導体関連株への資金流入を背景に、株価は大きく上昇しました。",
+      "emotion": "surprise"
+    },
+    {
+      "from": 600,
+      "duration": 300,
+      "title": "利確売りに注意",
+      "body": "一方、短期的な上昇が大きいため、利益確定売りにも注意が必要です。",
+      "emotion": "serious"
+    }
+  ]
+}
