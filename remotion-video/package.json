@@ -1,0 +1,20 @@
+{
+  "name": "remotion-video-prototype",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "studio": "remotion studio src/index.tsx",
+    "render": "remotion render src/index.tsx TestVideo out/test.mp4 --codec=h264",
+    "serve": "node server.mjs"
+  },
+  "dependencies": {
+    "@remotion/cli": "latest",
+    "remotion": "latest",
+    "react": "latest",
+    "react-dom": "latest"
+  }
+}
