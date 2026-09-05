@@ -100,6 +100,3 @@ Freeプランでは、取得できる株価は直近12週間を除く過去2年�
 利用にはLight以上のベースプランと、株価分足・ティックアドオンが必要です。
 分足の取得可能期間は過去2年間で、調整済み株価は含まれません。
 
-
-<!-- temporary export link -->
-[Temporary Taiyo Yuden 1min export](https://jquants-timeseries-mcp.onrender.com/tmp-taiyo-yuden-1min-6976-a91f3c2e)
