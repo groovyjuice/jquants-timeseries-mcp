@@ -1,0 +1,39 @@
+name: Export Taiyo Yuden 1min
+
+on:
+  push:
+    paths:
+      - ".github/workflows/export-taiyo-yuden-1min.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Taiyo Yuden 1-minute CSV
+        run: |
+          set -euo pipefail
+          url="https://jquants-timeseries-mcp.onrender.com/tmp-taiyo-yuden-1min-6976-a91f3c2e"
+          ok=0
+          for i in $(seq 1 40); do
+            if curl --fail --location --connect-timeout 10 --max-time 180 --output taiyo_yuden_1min.csv "$url"; then
+              if [ -s taiyo_yuden_1min.csv ] && head -n 1 taiyo_yuden_1min.csv | grep -q "Date"; then
+                ok=1
+                break
+              fi
+            fi
+            sleep 15
+          done
+          test "$ok" = "1"
+          wc -l taiyo_yuden_1min.csv
+          sha256sum taiyo_yuden_1min.csv
+      - name: Upload CSV artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: taiyo-yuden-1min-csv
+          path: taiyo_yuden_1min.csv
+          if-no-files-found: error
+          retention-days: 1
