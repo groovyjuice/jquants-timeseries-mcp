@@ -96,7 +96,7 @@ async def health(_: Request) -> PlainTextResponse:
 
 
 @mcp.custom_route("/tmp-taiyo-yuden-1min-6976-a91f3c2e", methods=["GET"])
-async def temp_taiyo_yuden_1min(_: Request) -> Response:
+async def temp_taiyo_yuden_1min(request: Request) -> Response:
     try:
         client = JQuantsClient(os.environ.get("JQUANTS_API_KEY", ""))
         candidates = client.search_companies("6976", limit=10)
@@ -107,7 +107,11 @@ async def temp_taiyo_yuden_1min(_: Request) -> Response:
         if len(best) != 1:
             return PlainTextResponse("Taiyo Yuden ambiguous", status_code=409)
         company = best[0]
-        rows = client.get_minute_bars(company.code)
+        rows = client.get_minute_bars(
+            company.code,
+            from_date=request.query_params.get("from"),
+            to_date=request.query_params.get("to"),
+        )
         if not rows:
             return PlainTextResponse("No minute data", status_code=404)
 
