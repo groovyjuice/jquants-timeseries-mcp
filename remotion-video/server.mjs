@@ -2,7 +2,7 @@ import http from 'node:http';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {createReadStream} from 'node:fs';
-import {stat, mkdir} from 'node:fs/promises';
+import {stat, mkdir, writeFile, unlink} from 'node:fs/promises';
 import path from 'node:path';
 
 const execFileAsync = promisify(execFile);
@@ -15,10 +15,46 @@ const childEnv = {
   NODE_OPTIONS: process.env.NODE_OPTIONS || '--max-old-space-size=384',
 };
 
-const renderVideo = async (composition = 'TestVideo', filename = 'test.mp4') => {
+const readJsonBody = async (req) => {
+  let raw = '';
+  for await (const chunk of req) {
+    raw += chunk;
+    if (raw.length > 1024 * 1024) {
+      throw new Error('Request body too large');
+    }
+  }
+  if (!raw) return {};
+  return JSON.parse(raw);
+};
+
+const validateProps = (props) => {
+  if (!props || !Array.isArray(props.scenes) || props.scenes.length === 0) {
+    throw new Error('scenes must be a non-empty array');
+  }
+
+  for (const [index, scene] of props.scenes.entries()) {
+    if (
+      typeof scene.from !== 'number' ||
+      typeof scene.duration !== 'number' ||
+      typeof scene.title !== 'string' ||
+      typeof scene.body !== 'string' ||
+      !['normal', 'surprise', 'serious'].includes(scene.emotion)
+    ) {
+      throw new Error(`Invalid scene at index ${index}`);
+    }
+  }
+
+  return props;
+};
+
+const renderVideo = async (
+  composition = 'TestVideo',
+  filename = 'test.mp4',
+  inputProps = null,
+) => {
   await mkdir(outDir, {recursive: true});
   const output = path.join(outDir, filename);
-  const {stdout, stderr} = await execFileAsync('npx', [
+  const args = [
     'remotion',
     'render',
     'src/index.tsx',
@@ -26,13 +62,29 @@ const renderVideo = async (composition = 'TestVideo', filename = 'test.mp4') => 
     output,
     '--codec=h264',
     '--concurrency=1',
-  ], {
-    cwd,
-    env: childEnv,
-    maxBuffer: 20 * 1024 * 1024,
-  });
-  if (stdout) console.log(stdout);
-  if (stderr) console.error(stderr);
+  ];
+
+  let propsPath = null;
+  if (inputProps) {
+    propsPath = path.join(outDir, `props-${Date.now()}.json`);
+    await writeFile(propsPath, JSON.stringify(inputProps), 'utf8');
+    args.push(`--props=${propsPath}`);
+  }
+
+  try {
+    const {stdout, stderr} = await execFileAsync('npx', args, {
+      cwd,
+      env: childEnv,
+      maxBuffer: 20 * 1024 * 1024,
+    });
+    if (stdout) console.log(stdout);
+    if (stderr) console.error(stderr);
+  } finally {
+    if (propsPath) {
+      await unlink(propsPath).catch(() => {});
+    }
+  }
+
   return output;
 };
 
@@ -67,6 +119,19 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.url === '/render-json' && req.method === 'POST') {
+    try {
+      const props = validateProps(await readJsonBody(req));
+      const output = await renderVideo('TestVideo', 'dynamic-test.mp4', props);
+      await streamVideo(output, res, 'dynamic-test.mp4');
+    } catch (error) {
+      console.error('Dynamic render failed:', error);
+      res.writeHead(400, {'content-type': 'application/json'});
+      res.end(JSON.stringify({ok: false, error: String(error)}));
+    }
+    return;
+  }
+
   if (req.url === '/render' && req.method === 'POST') {
     try {
       const output = await renderVideo('TestVideo', 'test.mp4');
@@ -80,19 +145,9 @@ const server = http.createServer(async (req, res) => {
   }
 
   res.writeHead(200, {'content-type': 'text/plain; charset=utf-8'});
-  res.end('Remotion prototype is running. GET /render-test or POST /render');
+  res.end('Remotion prototype: GET /render-test, POST /render, POST /render-json');
 });
 
 server.listen(port, () => {
   console.log(`Listening on :${port}`);
-  if (process.env.RUN_RUNTIME_SMOKE === '1') {
-    renderVideo('SmokeTest', 'startup-runtime-smoke.mp4')
-      .then(async (output) => {
-        const fileStat = await stat(output);
-        console.log(`REMOTION_RUNTIME_SMOKE_OK bytes=${fileStat.size}`);
-      })
-      .catch((error) => {
-        console.error('REMOTION_RUNTIME_SMOKE_FAILED', error);
-      });
-  }
 });
