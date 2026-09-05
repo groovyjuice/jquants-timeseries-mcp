@@ -113,7 +113,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.url === '/demo.mp4' && req.method === 'GET') {
+  if ((req.url === '/demo.mp4' || req.url?.startsWith('/demo.mp4?')) && req.method === 'GET') {
     try {
       const output = path.join(outDir, 'demo.mp4');
       await streamVideo(output, res, 'demo.mp4');
