@@ -13,21 +13,43 @@ jobs:
   export:
     runs-on: ubuntu-latest
     steps:
-      - name: Download Taiyo Yuden 1-minute CSV
+      - name: Download Taiyo Yuden 1-minute CSV in monthly chunks
         run: |
           set -euo pipefail
-          url="https://jquants-timeseries-mcp.onrender.com/tmp-taiyo-yuden-1min-6976-a91f3c2e"
-          ok=0
-          for i in $(seq 1 30); do
-            if curl --fail --location --connect-timeout 5 --max-time 30 --output taiyo_yuden_1min.csv "$url"; then
-              if [ -s taiyo_yuden_1min.csv ] && head -n 1 taiyo_yuden_1min.csv | grep -q "Date"; then
-                ok=1
-                break
-              fi
+          base="https://jquants-timeseries-mcp.onrender.com/tmp-taiyo-yuden-1min-6976-a91f3c2e"
+          rm -f taiyo_yuden_1min.csv
+          python - <<'PY' > ranges.txt
+          from datetime import date
+          start = date(2024, 9, 5)
+          end = date(2026, 9, 5)
+          cur = start
+          while cur <= end:
+              if cur.month == 12:
+                  nxt = date(cur.year + 1, 1, 1)
+              else:
+                  nxt = date(cur.year, cur.month + 1, 1)
+              chunk_end = min(end, date.fromordinal(nxt.toordinal() - 1))
+              print(cur.isoformat(), chunk_end.isoformat())
+              cur = nxt
+          PY
+          first=1
+          while read -r from to; do
+            echo "Fetching $from to $to"
+            tmp="chunk_${from}_${to}.csv"
+            curl --fail --location --retry 3 --retry-delay 2 \
+              --connect-timeout 10 --max-time 120 \
+              --output "$tmp" "$base?from=$from&to=$to"
+            test -s "$tmp"
+            if [ "$first" = "1" ]; then
+              cat "$tmp" > taiyo_yuden_1min.csv
+              first=0
+            else
+              tail -n +2 "$tmp" >> taiyo_yuden_1min.csv
             fi
-            sleep 10
-          done
-          test "$ok" = "1"
+            rm -f "$tmp"
+          done < ranges.txt
+          test -s taiyo_yuden_1min.csv
+          head -n 2 taiyo_yuden_1min.csv
           wc -l taiyo_yuden_1min.csv
           sha256sum taiyo_yuden_1min.csv
       - name: Upload CSV artifact
@@ -37,5 +59,6 @@ jobs:
           path: taiyo_yuden_1min.csv
           if-no-files-found: error
           retention-days: 1
+          compression-level: 0
 
-# trigger-20260905-fast-2
+# trigger-20260905-chunked
