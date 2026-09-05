@@ -89,6 +89,77 @@ class ServerResultTests(unittest.TestCase):
         with self.assertRaises(server.ToolError):
             server.get_stock_timeseries("30分足")
 
+    def test_1min_tool_returns_unaggregated_csv(self):
+        company = Mock()
+        company.rank = 0
+        company.code = "285A0"
+        company.name = "キオクシアホールディングス"
+        company.public_dict.return_value = {
+            "code": "285A0",
+            "name": "キオクシアホールディングス",
+            "name_en": "Kioxia Holdings Corporation",
+            "market": "プライム",
+        }
+
+        client = Mock()
+        client.search_companies.return_value = [company]
+        client.get_minute_bars.return_value = [
+            {
+                "Date": "2026-01-05",
+                "Time": "09:00",
+                "Code": "285A0",
+                "O": 1000,
+                "H": 1010,
+                "L": 995,
+                "C": 1005,
+                "Vo": 100,
+                "Va": 100500,
+            },
+            {
+                "Date": "2026-01-05",
+                "Time": "09:01",
+                "Code": "285A0",
+                "O": 1005,
+                "H": 1015,
+                "L": 1000,
+                "C": 1010,
+                "Vo": 120,
+                "Va": 121200,
+            },
+        ]
+
+        with patch.dict(
+            os.environ,
+            {
+                "JQUANTS_API_KEY": "test-key",
+                "RENDER_EXTERNAL_HOSTNAME": "example.onrender.com",
+            },
+        ), patch.object(server, "JQuantsClient", return_value=client):
+            result = server.get_stock_1min_timeseries(
+                "285A",
+                from_date="2026-01-05",
+                to_date="2026-01-05",
+            )
+
+        payload = result.structured_content
+        self.assertEqual(payload["interval_minutes"], 1)
+        self.assertEqual(payload["row_count"], 2)
+        self.assertEqual(
+            payload["filename"],
+            "JQ_キオクシアホールディングス_1min_2026-01-05_2026-01-05.csv",
+        )
+        resources = [
+            item for item in result.content if isinstance(item, EmbeddedResource)
+        ]
+        self.assertEqual(len(resources), 1)
+        self.assertIn("09:00", resources[0].resource.text)
+        self.assertIn("09:01", resources[0].resource.text)
+        client.get_minute_bars.assert_called_once_with(
+            "285A0",
+            from_date="2026-01-05",
+            to_date="2026-01-05",
+        )
+
     def test_csv_result_uses_intraday_series_name(self):
         payload = {
             "status": "ok",
