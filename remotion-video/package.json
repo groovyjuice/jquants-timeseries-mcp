@@ -10,8 +10,9 @@
     "studio": "remotion studio src/index.tsx",
     "render": "remotion render src/index.tsx TestVideo out/test.mp4 --codec=h264",
     "smoke": "remotion render src/index.tsx SmokeTest out/smoke-build.mp4 --codec=h264 --props=test-props.json",
-    "postinstall": "npm run smoke",
-    "serve": "node server.mjs"
+    "postinstall": "npm run smoke && npm run demo",
+    "serve": "node server.mjs",
+    "demo": "remotion render src/index.tsx TestVideo out/demo.mp4 --codec=h264 --concurrency=1 --props=demo-props.json"
   },
   "dependencies": {
     "@remotion/cli": "latest",
