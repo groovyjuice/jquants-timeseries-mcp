@@ -247,7 +247,7 @@ const concatSegmentsAndAddBgm = async ({
     );
 
     const bgmVolume =
-      typeof props.bgmVolume === 'number' ? props.bgmVolume : 0.02;
+      typeof props.bgmVolume === 'number' ? props.bgmVolume : 0.025;
     const fadeInFrames =
       typeof props.bgmFadeInFrames === 'number' ? props.bgmFadeInFrames : 30;
     const fadeOutFrames =
