@@ -34,17 +34,24 @@ jobs:
           URL="https://remotion-video-prototype.onrender.com/render-package.tar.gz"
           for i in $(seq 1 80); do
             echo "Package attempt $i"
-            CODE=$(curl -L -sS --max-time 90 -o render-package.tar.gz -w "%{http_code}" "$URL" || true)
-            SIZE=$(stat -c%s render-package.tar.gz 2>/dev/null || echo 0)
+            rm -f render-package.tar.gz render-package.tmp
+            CODE=$(curl -L -sS --connect-timeout 20 --max-time 300 \
+              --retry 3 --retry-delay 3 --retry-all-errors \
+              -o render-package.tmp -w "%{http_code}" "$URL" || true)
+            SIZE=$(stat -c%s render-package.tmp 2>/dev/null || echo 0)
             echo "HTTP=$CODE size=$SIZE"
             if [ "$CODE" = "200" ] && [ "$SIZE" -gt 1000000 ]; then
-              echo "Render package ready."
-              exit 0
+              if gzip -t render-package.tmp && tar -tzf render-package.tmp >/dev/null; then
+                mv render-package.tmp render-package.tar.gz
+                echo "Render package ready and verified."
+                exit 0
+              fi
+              echo "Package was incomplete or corrupt; retrying."
             fi
-            rm -f render-package.tar.gz
+            rm -f render-package.tmp
             sleep 30
           done
-          echo "Timed out waiting for render package."
+          echo "Timed out waiting for a valid render package."
           exit 1
 
       - name: Extract prepared assets
