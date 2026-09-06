@@ -294,6 +294,63 @@ export const prepareEmbeddedSpriteProject = async ({
 };
 
 
+export const prepareRepoPlanProject = async ({planPath}) => {
+  if (!planPath) throw new Error('planPath is required');
+
+  const plan = JSON.parse(await readFile(planPath, 'utf8'));
+  if (!Array.isArray(plan.slides) || plan.slides.length === 0) {
+    throw new Error('repo video plan must contain a non-empty slides array');
+  }
+
+  const scenes = plan.slides.map((slide) => ({
+    from: 0,
+    duration: 1,
+    title: asString(
+      slide.display_title,
+      asString(slide.headline, asString(slide.section, '')),
+    ),
+    body: asString(
+      slide.subtitle,
+      asString(slide.subheadline, asString(slide.slide_text, '')),
+    ),
+    narration: asString(slide.narration, asString(slide.source_text, '')),
+    emotion: validEmotions.has(slide.emotion) ? slide.emotion : 'normal',
+    slideType: asString(slide.type, 'content'),
+    section: asString(slide.section, ''),
+    slideItems: Array.isArray(slide.slide_text)
+      ? slide.slide_text.map((item) => String(item))
+      : [],
+  }));
+
+  return {
+    plan,
+    generatedFiles: [],
+    props: {
+      scenes,
+      tts_voice: asString(plan.tts_voice, 'marin'),
+      tts_speed:
+        typeof plan.tts_speed === 'number' && Number.isFinite(plan.tts_speed)
+          ? plan.tts_speed
+          : 1.18,
+      bgmAsset: asString(plan.bgm_asset, 'common/bgm/main_bgm.mp3'),
+      bgmLoop: plan.bgm_loop !== false,
+      bgmVolume:
+        typeof plan.bgm_volume === 'number' && Number.isFinite(plan.bgm_volume)
+          ? plan.bgm_volume
+          : 0.025,
+      bgmFadeInFrames:
+        typeof plan.bgm_fade_in_frames === 'number'
+          ? plan.bgm_fade_in_frames
+          : 30,
+      bgmFadeOutFrames:
+        typeof plan.bgm_fade_out_frames === 'number'
+          ? plan.bgm_fade_out_frames
+          : 45,
+    },
+  };
+};
+
+
 export const prepareLocalProject = async ({
   projectDir,
   publicPrefix,

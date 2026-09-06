@@ -21,6 +21,9 @@ export type Scene = {
   slideSpriteIndex?: number;
   slideSpriteColumns?: number;
   slideSpriteRows?: number;
+  slideType?: string;
+  section?: string;
+  slideItems?: string[];
 };
 
 export const scenes: Scene[] = [

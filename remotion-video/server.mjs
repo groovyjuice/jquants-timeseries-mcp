@@ -6,7 +6,7 @@ import {stat, mkdir, writeFile, readFile, unlink, rm, cp} from 'node:fs/promises
 import path from 'node:path';
 import {planScenes} from './planner.mjs';
 import {readGoogleDocText} from './drive.mjs';
-import {prepareDriveProject, prepareLocalProject, prepareSpriteProject, prepareEmbeddedSpriteProject} from './project.mjs';
+import {prepareDriveProject, prepareLocalProject, prepareSpriteProject, prepareEmbeddedSpriteProject, prepareRepoPlanProject} from './project.mjs';
 import {generatePublishMetadata, applyChaptersToPublishMetadata} from './publish-metadata.mjs';
 import {
   getTtsConfig,
@@ -496,7 +496,8 @@ const createRenderPackage = async ({
 };
 
 const autoRenderConfiguredProject = async () => {
-  if (process.env.AUTO_RENDER_DRIVE_PROJECT !== '1') return;
+  const useRepoPlan = process.env.AUTO_RENDER_REPO_PROJECT === '1';
+  if (!useRepoPlan && process.env.AUTO_RENDER_DRIVE_PROJECT !== '1') return;
 
   const videoPlanFileId = process.env.AUTO_PROJECT_VIDEO_PLAN_FILE_ID;
   const slidesFolderId = process.env.AUTO_PROJECT_SLIDES_FOLDER_ID;
@@ -506,8 +507,11 @@ const autoRenderConfiguredProject = async () => {
     process.env.AUTO_PROJECT_OUTPUT_FILENAME || 'project-output.mp4';
 
   if (
-    !endingSlideFileId ||
-    (!spritePlanFileId && (!videoPlanFileId || !slidesFolderId))
+    !useRepoPlan &&
+    (
+      !endingSlideFileId ||
+      (!spritePlanFileId && (!videoPlanFileId || !slidesFolderId))
+    )
   ) {
     console.error(
       'Auto project render skipped: Drive project environment variables are incomplete',
@@ -535,7 +539,12 @@ const autoRenderConfiguredProject = async () => {
     const bundlePath = path.join(cwd, 'project-bundle.tar.gz');
     let project;
 
-    if (spritePlanFileId) {
+    if (useRepoPlan) {
+      console.log('Auto project render: loading repository video plan');
+      project = await prepareRepoPlanProject({
+        planPath: path.join(cwd, 'terradone-video-plan.json'),
+      });
+    } else if (spritePlanFileId) {
       console.log('Auto project render: loading sprite project and embedded plan from Drive');
       project = await prepareSpriteProject({
         spritePlanFileId,

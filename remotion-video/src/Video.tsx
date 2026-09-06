@@ -405,32 +405,114 @@ const SlideArea: React.FC<{scene: Scene}> = ({scene}) => {
               height: '100%',
               display: 'flex',
               flexDirection: 'column',
-              justifyContent: 'center',
-              padding: 90,
+              justifyContent:
+                scene.slideType === 'title' ||
+                scene.slideType === 'section_title' ||
+                scene.slideType === 'ending'
+                  ? 'center'
+                  : 'flex-start',
+              padding: scene.slideType === 'content' ? '72px 82px' : '86px 92px',
               boxSizing: 'border-box',
               color: '#111827',
-              backgroundColor: '#ffffff',
+              background:
+                scene.slideType === 'section_title'
+                  ? 'linear-gradient(135deg, #f7fbff 0%, #eaf3fd 100%)'
+                  : '#ffffff',
             }}
           >
+            {scene.section && scene.slideType === 'content' ? (
+              <div
+                style={{
+                  fontSize: 24,
+                  fontWeight: 700,
+                  letterSpacing: 1,
+                  color: '#64748b',
+                  marginBottom: 22,
+                }}
+              >
+                {scene.section}
+              </div>
+            ) : null}
+
             <div
               style={{
-                fontSize: 88,
+                fontSize:
+                  scene.slideType === 'title'
+                    ? 86
+                    : scene.slideType === 'section_title'
+                      ? 78
+                      : scene.slideType === 'ending'
+                        ? 78
+                        : 62,
                 fontWeight: 800,
-                lineHeight: 1.15,
+                lineHeight: 1.18,
+                textAlign:
+                  scene.slideType === 'title' ||
+                  scene.slideType === 'section_title' ||
+                  scene.slideType === 'ending'
+                    ? 'center'
+                    : 'left',
               }}
             >
               {scene.title}
             </div>
-            <div
-              style={{
-                fontSize: 48,
-                lineHeight: 1.5,
-                marginTop: 42,
-                color: '#374151',
-              }}
-            >
-              {scene.body}
-            </div>
+
+            {scene.body ? (
+              <div
+                style={{
+                  fontSize:
+                    scene.slideType === 'content' ? 34 : 42,
+                  lineHeight: 1.45,
+                  marginTop: scene.slideType === 'content' ? 20 : 30,
+                  color: '#475569',
+                  fontWeight: 600,
+                  textAlign:
+                    scene.slideType === 'title' ||
+                    scene.slideType === 'section_title' ||
+                    scene.slideType === 'ending'
+                      ? 'center'
+                      : 'left',
+                }}
+              >
+                {scene.body}
+              </div>
+            ) : null}
+
+            {scene.slideItems?.length ? (
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns:
+                    scene.slideItems.length >= 4 ? '1fr 1fr' : '1fr',
+                  gap: 20,
+                  marginTop: 42,
+                  width: '100%',
+                }}
+              >
+                {scene.slideItems.map((item, index) => (
+                  <div
+                    key={index}
+                    style={{
+                      fontSize: scene.slideType === 'content' ? 32 : 34,
+                      lineHeight: 1.35,
+                      fontWeight: 700,
+                      padding: '22px 28px',
+                      borderRadius: 18,
+                      background: '#f4f8fc',
+                      border: '1px solid #dce7f2',
+                      boxShadow: '0 6px 18px rgba(39, 73, 111, 0.07)',
+                      textAlign:
+                        scene.slideType === 'title' ||
+                        scene.slideType === 'ending'
+                          ? 'center'
+                          : 'left',
+                    }}
+                  >
+                    {item}
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
         )}
       </div>
