@@ -1,4 +1,5 @@
 import path from 'node:path';
+import {readFile} from 'node:fs/promises';
 import {
   downloadDriveFile,
   listDriveFolderFiles,
@@ -87,6 +88,73 @@ export const prepareDriveProject = async ({
   return {
     plan,
     generatedFiles,
+    props: {
+      scenes,
+      tts_voice: asString(plan.tts_voice, 'marin'),
+      tts_speed:
+        typeof plan.tts_speed === 'number' && Number.isFinite(plan.tts_speed)
+          ? plan.tts_speed
+          : 1.18,
+      bgmAsset: asString(plan.bgm_asset, 'common/bgm/main_bgm.mp3'),
+      bgmLoop: plan.bgm_loop !== false,
+      bgmVolume:
+        typeof plan.bgm_volume === 'number' && Number.isFinite(plan.bgm_volume)
+          ? plan.bgm_volume
+          : 0.02,
+      bgmFadeInFrames:
+        typeof plan.bgm_fade_in_frames === 'number'
+          ? plan.bgm_fade_in_frames
+          : 30,
+      bgmFadeOutFrames:
+        typeof plan.bgm_fade_out_frames === 'number'
+          ? plan.bgm_fade_out_frames
+          : 45,
+    },
+  };
+};
+
+
+export const prepareLocalProject = async ({
+  projectDir,
+  publicPrefix,
+}) => {
+  if (!projectDir || !publicPrefix) {
+    throw new Error('projectDir and publicPrefix are required');
+  }
+
+  const planPath = path.join(projectDir, 'video_plan.json');
+  const plan = JSON.parse(await readFile(planPath, 'utf8'));
+
+  if (!Array.isArray(plan.slides) || plan.slides.length === 0) {
+    throw new Error('local video plan must contain a non-empty slides array');
+  }
+
+  const scenes = plan.slides.map((slide, index) => {
+    const defaultFilename = `slide_${String(index + 1).padStart(3, '0')}.webp`;
+    const filename = asString(slide.filename, defaultFilename);
+    const localFilename = slide.fixed_asset
+      ? 'ending_slide.webp'
+      : path.posix.join('slides', filename);
+
+    return {
+      from: 0,
+      duration: 1,
+      title: asString(
+        slide.display_title,
+        asString(slide.headline, asString(slide.section, '')),
+      ),
+      body: asString(
+        slide.subtitle,
+        asString(slide.subheadline, asString(slide.slide_text, '')),
+      ),
+      narration: asString(slide.narration, asString(slide.source_text, '')),
+      emotion: validEmotions.has(slide.emotion) ? slide.emotion : 'normal',
+      slideSrc: `${publicPrefix}/${localFilename}`,
+    };
+  });
+
+  return {
+    plan,
     props: {
       scenes,
       tts_voice: asString(plan.tts_voice, 'marin'),
