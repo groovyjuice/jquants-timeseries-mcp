@@ -7,7 +7,7 @@ import path from 'node:path';
 import {planScenes} from './planner.mjs';
 import {readGoogleDocText} from './drive.mjs';
 import {prepareDriveProject, prepareLocalProject} from './project.mjs';
-import {generatePublishMetadata} from './publish-metadata.mjs';
+import {generatePublishMetadata, applyChaptersToPublishMetadata} from './publish-metadata.mjs';
 import {
   getTtsConfig,
   prepareNarratedScenes,
@@ -551,8 +551,18 @@ const autoRenderConfiguredProject = async () => {
     ]);
     generatedAudioFiles = prepared.generatedFiles;
 
+    const finalizedPublishMetadata =
+      await applyChaptersToPublishMetadata({
+        metadata: publishMetadata,
+        plan: project.plan,
+        scenes: prepared.scenes,
+        fps: 30,
+        totalFrames: prepared.totalFrames,
+        outputDir: publishDir,
+      });
+
     console.log(
-      `Auto project render: TTS complete, totalFrames=${prepared.totalFrames}; publish metadata titles=${publishMetadata.title_candidates.length}; creating render package`,
+      `Auto project render: TTS complete, totalFrames=${prepared.totalFrames}; publish metadata titles=${finalizedPublishMetadata.title_candidates.length}; chapters=${finalizedPublishMetadata.chapters.length}; creating render package`,
     );
     await createRenderPackage({
       projectDir,
