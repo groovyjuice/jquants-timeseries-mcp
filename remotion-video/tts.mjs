@@ -12,6 +12,7 @@ const DEFAULT_INSTRUCTIONS = [
   'Keep a brisk, comfortable pace that feels a little faster than normal conversation.',
   'Keep pronunciation precise, especially for company names, numbers, and financial terms.',
   'For Japanese stock-market terminology, always pronounce 終値 as おわりね, never おわね.',
+  'Always pronounce くら寿司 as くらずし, never くらすし.',
   'Avoid breathiness, raspiness, muffled resonance, exaggerated accents, slang, childish delivery, or theatrical acting.',
   'Read the supplied text faithfully without adding commentary.',
 ].join(' ');
@@ -21,6 +22,7 @@ const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
 const PRONUNCIATION_REPLACEMENTS = [
   ['終値', 'おわりね'],
+  ['くら寿司', 'くらずし'],
 ];
 
 export const normalizeTtsText = (text) => {
