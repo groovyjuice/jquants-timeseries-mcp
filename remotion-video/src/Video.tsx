@@ -19,6 +19,17 @@ import {
 
 export type VideoProps = {
   scenes?: Scene[];
+  logoSrc?: string;
+};
+
+const CONTENT_HEIGHT = 900;
+const SUBTITLE_HEIGHT = 180;
+const SLIDE_WIDTH = 1440;
+const SIDEBAR_WIDTH = 480;
+
+const assetSrc = (src: string) => {
+  if (/^(https?:|data:|blob:)/.test(src)) return src;
+  return staticFile(src.replace(/^\//, ''));
 };
 
 const avatarAssets = {
@@ -51,8 +62,7 @@ const Avatar: React.FC<{
   mouthCues?: MouthState[];
 }> = ({emotion, mouthCues}) => {
   const frame = useCurrentFrame();
-
-  const bob = Math.sin(frame / 11) * 4;
+  const bob = Math.sin(frame / 11) * 3;
 
   const isSmile = emotion === 'smile';
   const blinkPhase = frame % 120;
@@ -93,12 +103,12 @@ const Avatar: React.FC<{
     <div
       style={{
         position: 'absolute',
-        right: 48,
-        bottom: 108,
-        width: 500,
-        height: 500,
+        left: 10,
+        bottom: 18,
+        width: 460,
+        height: 460,
         transform: `translateY(${bob}px)`,
-        filter: 'drop-shadow(0 18px 28px rgba(0,0,0,0.28))',
+        filter: 'drop-shadow(0 12px 18px rgba(0,0,0,0.14))',
       }}
     >
       <AvatarLayer src={baseSrc} />
@@ -108,44 +118,183 @@ const Avatar: React.FC<{
   );
 };
 
-const SceneCard: React.FC<{scene: Scene}> = ({scene}) => {
+const ChannelBrand: React.FC<{logoSrc?: string}> = ({logoSrc}) => (
+  <div
+    style={{
+      position: 'absolute',
+      top: 60,
+      left: 30,
+      right: 30,
+      height: 260,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      textAlign: 'center',
+    }}
+  >
+    {logoSrc ? (
+      <Img
+        src={assetSrc(logoSrc)}
+        style={{
+          maxWidth: '100%',
+          maxHeight: '100%',
+          objectFit: 'contain',
+        }}
+      />
+    ) : (
+      <div
+        style={{
+          fontSize: 46,
+          lineHeight: 1.35,
+          fontWeight: 800,
+          color: '#172033',
+          letterSpacing: 1.5,
+        }}
+      >
+        賢明なる
+        <br />
+        投資家チャンネル
+      </div>
+    )}
+  </div>
+);
+
+const SlideArea: React.FC<{scene: Scene}> = ({scene}) => {
   const frame = useCurrentFrame();
-  const opacity = interpolate(frame, [0, 15], [0, 1], {
+  const opacity = interpolate(frame, [0, 12], [0, 1], {
     extrapolateRight: 'clamp',
   });
 
   return (
-    <AbsoluteFill
+    <div
       style={{
-        background: 'linear-gradient(135deg, #101624 0%, #24324d 100%)',
-        color: 'white',
-        fontFamily: "'Noto Sans JP', sans-serif",
-        padding: 120,
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        width: SLIDE_WIDTH,
+        height: CONTENT_HEIGHT,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#ffffff',
+        padding: '40px 40px 50px 40px',
+        boxSizing: 'border-box',
       }}
     >
-      {scene.audioSrc ? <Audio src={staticFile(scene.audioSrc)} /> : null}
-
-      <div style={{opacity, maxWidth: 1160}}>
-        <div style={{fontSize: 94, fontWeight: 800, lineHeight: 1.1}}>
-          {scene.title}
-        </div>
-        <div style={{fontSize: 50, marginTop: 48, lineHeight: 1.5}}>
-          {scene.body}
-        </div>
+      <div
+        style={{
+          width: '100%',
+          aspectRatio: '16 / 9',
+          maxHeight: 810,
+          position: 'relative',
+          overflow: 'hidden',
+          backgroundColor: '#f8fafc',
+          border: '1px solid #e5e7eb',
+          borderRadius: 18,
+          boxShadow: '0 12px 34px rgba(15,23,42,0.10)',
+          opacity,
+        }}
+      >
+        {scene.slideSrc ? (
+          <Img
+            src={assetSrc(scene.slideSrc)}
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'contain',
+              backgroundColor: '#ffffff',
+            }}
+          />
+        ) : (
+          <div
+            style={{
+              width: '100%',
+              height: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+              padding: 90,
+              boxSizing: 'border-box',
+              color: '#111827',
+              backgroundColor: '#ffffff',
+            }}
+          >
+            <div
+              style={{
+                fontSize: 88,
+                fontWeight: 800,
+                lineHeight: 1.15,
+              }}
+            >
+              {scene.title}
+            </div>
+            <div
+              style={{
+                fontSize: 48,
+                lineHeight: 1.5,
+                marginTop: 42,
+                color: '#374151',
+              }}
+            >
+              {scene.body}
+            </div>
+          </div>
+        )}
       </div>
+    </div>
+  );
+};
 
-      <Avatar emotion={scene.emotion} mouthCues={scene.mouthCues} />
+const SceneCard: React.FC<{scene: Scene; logoSrc?: string}> = ({
+  scene,
+  logoSrc,
+}) => {
+  return (
+    <AbsoluteFill
+      style={{
+        backgroundColor: '#ffffff',
+        color: '#111827',
+        fontFamily: "'Noto Sans JP', sans-serif",
+      }}
+    >
+      {scene.audioSrc ? <Audio src={assetSrc(scene.audioSrc)} /> : null}
+
+      <SlideArea scene={scene} />
 
       <div
         style={{
           position: 'absolute',
-          left: 120,
-          right: 120,
-          bottom: 55,
-          fontSize: 34,
-          padding: '20px 30px',
-          borderRadius: 20,
-          background: 'rgba(0,0,0,0.55)',
+          right: 0,
+          top: 0,
+          width: SIDEBAR_WIDTH,
+          height: CONTENT_HEIGHT,
+          backgroundColor: '#f8fafc',
+          borderLeft: '1px solid #e5e7eb',
+          boxSizing: 'border-box',
+        }}
+      >
+        <ChannelBrand logoSrc={logoSrc} />
+        <Avatar emotion={scene.emotion} mouthCues={scene.mouthCues} />
+      </div>
+
+      <div
+        style={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: SUBTITLE_HEIGHT,
+          padding: '22px 72px',
+          boxSizing: 'border-box',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 54,
+          fontWeight: 700,
+          lineHeight: 1.35,
+          color: '#111827',
+          backgroundColor: '#ffffff',
+          borderTop: '2px solid #e5e7eb',
           textAlign: 'center',
           zIndex: 20,
         }}
@@ -156,12 +305,15 @@ const SceneCard: React.FC<{scene: Scene}> = ({scene}) => {
   );
 };
 
-export const TestVideo: React.FC<VideoProps> = ({scenes = defaultScenes}) => {
+export const TestVideo: React.FC<VideoProps> = ({
+  scenes = defaultScenes,
+  logoSrc,
+}) => {
   return (
     <AbsoluteFill>
       {scenes.map((scene, i) => (
         <Sequence key={i} from={scene.from} durationInFrames={scene.duration}>
-          <SceneCard scene={scene} />
+          <SceneCard scene={scene} logoSrc={logoSrc} />
         </Sequence>
       ))}
     </AbsoluteFill>
