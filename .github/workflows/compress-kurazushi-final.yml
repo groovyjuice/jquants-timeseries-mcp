@@ -1,0 +1,77 @@
+name: Compress Kura Sushi Final
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/compress-kurazushi-final.yml"
+
+jobs:
+  compress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Download completed full video
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 34022110439
+          name: kurazushi-full-video-final
+          path: input
+
+      - name: Inspect source
+        run: |
+          ls -lh input
+          ffprobe -v error \
+            -show_entries format=duration,size,bit_rate \
+            -of default=noprint_wrappers=1 \
+            input/kurazushi_chiikawa_full.mp4
+
+      - name: Two-pass compress to under 200 MB
+        shell: bash
+        run: |
+          set -euo pipefail
+          IN="input/kurazushi_chiikawa_full.mp4"
+          OUT="kurazushi_chiikawa_full_1080p_200mb.mp4"
+
+          ffmpeg -y -i "$IN" \
+            -c:v libx264 -preset medium -b:v 720k \
+            -pix_fmt yuv420p \
+            -pass 1 -an -f mp4 /dev/null
+
+          ffmpeg -y -i "$IN" \
+            -c:v libx264 -preset medium -b:v 720k \
+            -pix_fmt yuv420p \
+            -pass 2 \
+            -c:a aac -b:a 128k \
+            -movflags +faststart \
+            "$OUT"
+
+          rm -f ffmpeg2pass-0.log ffmpeg2pass-0.log.mbtree
+
+      - name: Verify compressed output
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE="kurazushi_chiikawa_full_1080p_200mb.mp4"
+          SIZE=$(stat -c%s "$FILE")
+          echo "bytes=$SIZE"
+          ffprobe -v error \
+            -show_entries format=duration,size,bit_rate \
+            -of default=noprint_wrappers=1 \
+            "$FILE"
+          test "$SIZE" -lt 200000000
+
+      - name: Upload compressed final video
+        uses: actions/upload-artifact@v4
+        with:
+          name: kurazushi-full-video-under-200mb
+          path: kurazushi_chiikawa_full_1080p_200mb.mp4
+          retention-days: 7
+          compression-level: 0
