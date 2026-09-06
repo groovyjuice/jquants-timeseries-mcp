@@ -1,0 +1,57 @@
+name: Compress Kura Sushi Fast
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/compress-kurazushi-fast.yml"
+
+jobs:
+  compress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Download completed full video
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 34022110439
+          name: kurazushi-full-video-final
+          path: input
+
+      - name: Fast compress under 200 MB
+        shell: bash
+        run: |
+          set -euo pipefail
+          IN="input/kurazushi_chiikawa_full.mp4"
+          OUT="kurazushi_chiikawa_full_1080p_under200mb_fast.mp4"
+
+          ffmpeg -y -i "$IN" \
+            -c:v libx264 -preset veryfast \
+            -b:v 700k -maxrate 850k -bufsize 1700k \
+            -pix_fmt yuv420p \
+            -c:a aac -b:a 128k \
+            -movflags +faststart \
+            "$OUT"
+
+          SIZE=$(stat -c%s "$OUT")
+          echo "bytes=$SIZE"
+          ffprobe -v error \
+            -show_entries format=duration,size,bit_rate \
+            -of default=noprint_wrappers=1 \
+            "$OUT"
+          test "$SIZE" -lt 200000000
+
+      - name: Upload compressed video
+        uses: actions/upload-artifact@v4
+        with:
+          name: kurazushi-full-video-under-200mb-fast
+          path: kurazushi_chiikawa_full_1080p_under200mb_fast.mp4
+          retention-days: 7
+          compression-level: 0
