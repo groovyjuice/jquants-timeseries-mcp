@@ -28,6 +28,81 @@ export type VideoProps = {
   bgmFadeOutFrames?: number;
 };
 
+
+const splitSubtitle = (text: string, maxChars = 34) => {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  if (!normalized) return [''];
+
+  const sentences = normalized
+    .split(/(?<=[。！？!?])/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  const chunks: string[] = [];
+  let current = '';
+
+  const pushCurrent = () => {
+    if (current.trim()) chunks.push(current.trim());
+    current = '';
+  };
+
+  for (const sentence of sentences) {
+    if (sentence.length <= maxChars) {
+      if (!current) {
+        current = sentence;
+      } else if ((current + sentence).length <= maxChars) {
+        current += sentence;
+      } else {
+        pushCurrent();
+        current = sentence;
+      }
+      continue;
+    }
+
+    pushCurrent();
+    const clauses = sentence
+      .split(/(?<=[、，,])/)
+      .map((part) => part.trim())
+      .filter(Boolean);
+
+    let clauseBuffer = '';
+    for (const clause of clauses) {
+      if (!clauseBuffer) {
+        clauseBuffer = clause;
+      } else if ((clauseBuffer + clause).length <= maxChars) {
+        clauseBuffer += clause;
+      } else {
+        chunks.push(clauseBuffer);
+        clauseBuffer = clause;
+      }
+    }
+    if (clauseBuffer) chunks.push(clauseBuffer);
+  }
+
+  pushCurrent();
+  return chunks.length ? chunks : [normalized];
+};
+
+const subtitleAtFrame = (scene: Scene, frame: number) => {
+  const text = scene.narration ?? scene.body;
+  const chunks = splitSubtitle(text);
+  if (chunks.length <= 1) return chunks[0] ?? '';
+
+  const weights = chunks.map((chunk) => Math.max(1, chunk.length));
+  const totalWeight = weights.reduce((sum, value) => sum + value, 0);
+  const progress = Math.min(
+    totalWeight - 1,
+    Math.max(0, Math.floor((frame / Math.max(1, scene.duration)) * totalWeight)),
+  );
+
+  let cursor = 0;
+  for (let index = 0; index < chunks.length; index++) {
+    cursor += weights[index];
+    if (progress < cursor) return chunks[index];
+  }
+  return chunks[chunks.length - 1];
+};
+
 const CONTENT_HEIGHT = 900;
 const SUBTITLE_HEIGHT = 180;
 const SLIDE_WIDTH = 1440;
@@ -328,6 +403,9 @@ const SceneCard: React.FC<{scene: Scene; logoSrc?: string}> = ({
   scene,
   logoSrc,
 }) => {
+  const frame = useCurrentFrame();
+  const subtitle = subtitleAtFrame(scene, frame);
+
   return (
     <AbsoluteFill
       style={{
@@ -385,7 +463,7 @@ const SceneCard: React.FC<{scene: Scene; logoSrc?: string}> = ({
           zIndex: 20,
         }}
       >
-        {scene.narration ?? scene.body}
+        {subtitle}
       </div>
     </AbsoluteFill>
   );
