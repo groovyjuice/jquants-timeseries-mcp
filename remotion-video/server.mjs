@@ -512,10 +512,10 @@ const autoRenderConfiguredProject = async () => {
     const bundlePath = path.join(cwd, 'project-bundle.tar.gz');
     let project;
 
-    try {
-      await stat(bundlePath);
-      console.log('Auto project render: extracting bundled project assets');
+    if (process.env.AUTO_RENDER_USE_BUNDLED_PROJECT === '1') {
+      console.log('Auto project render: using explicitly enabled bundled project assets');
       await mkdir(projectDir, {recursive: true});
+      await stat(bundlePath);
       await execFileAsync(
         'tar',
         ['-xzf', bundlePath, '-C', projectDir],
@@ -525,10 +525,8 @@ const autoRenderConfiguredProject = async () => {
         projectDir,
         publicPrefix,
       });
-    } catch (bundleError) {
-      console.log(
-        'Auto project render: local bundle unavailable; falling back to Drive',
-      );
+    } else {
+      console.log('Auto project render: loading current project assets from Drive');
       project = await prepareDriveProject({
         videoPlanFileId,
         slidesFolderId,
