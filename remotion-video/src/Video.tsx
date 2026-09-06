@@ -108,7 +108,7 @@ const Avatar: React.FC<{
         width: 460,
         height: 460,
         transform: `translateY(${bob}px)`,
-        filter: 'drop-shadow(0 12px 18px rgba(0,0,0,0.14))',
+        filter: 'drop-shadow(0 14px 20px rgba(52, 94, 138, 0.16))',
       }}
     >
       <AvatarLayer src={baseSrc} />
@@ -159,6 +159,50 @@ const ChannelBrand: React.FC<{logoSrc?: string}> = ({logoSrc}) => (
   </div>
 );
 
+const BackgroundDecor: React.FC = () => (
+  <>
+    <div
+      style={{
+        position: 'absolute',
+        left: -120,
+        top: -100,
+        width: 480,
+        height: 480,
+        borderRadius: '50%',
+        background:
+          'radial-gradient(circle, rgba(186,214,244,0.50) 0%, rgba(186,214,244,0.16) 45%, rgba(186,214,244,0) 72%)',
+        filter: 'blur(6px)',
+      }}
+    />
+    <div
+      style={{
+        position: 'absolute',
+        right: 180,
+        top: 120,
+        width: 300,
+        height: 300,
+        borderRadius: '50%',
+        background:
+          'radial-gradient(circle, rgba(209,227,247,0.42) 0%, rgba(209,227,247,0.14) 48%, rgba(209,227,247,0) 76%)',
+        filter: 'blur(4px)',
+      }}
+    />
+    <div
+      style={{
+        position: 'absolute',
+        left: 420,
+        bottom: 110,
+        width: 420,
+        height: 420,
+        borderRadius: '50%',
+        background:
+          'radial-gradient(circle, rgba(224,235,248,0.40) 0%, rgba(224,235,248,0.12) 46%, rgba(224,235,248,0) 76%)',
+        filter: 'blur(8px)',
+      }}
+    />
+  </>
+);
+
 const SlideArea: React.FC<{scene: Scene}> = ({scene}) => {
   const frame = useCurrentFrame();
   const opacity = interpolate(frame, [0, 12], [0, 1], {
@@ -176,7 +220,6 @@ const SlideArea: React.FC<{scene: Scene}> = ({scene}) => {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: '#ffffff',
         padding: '40px 40px 50px 40px',
         boxSizing: 'border-box',
       }}
@@ -188,10 +231,10 @@ const SlideArea: React.FC<{scene: Scene}> = ({scene}) => {
           maxHeight: 810,
           position: 'relative',
           overflow: 'hidden',
-          backgroundColor: '#f8fafc',
-          border: '1px solid #e5e7eb',
-          borderRadius: 18,
-          boxShadow: '0 12px 34px rgba(15,23,42,0.10)',
+          backgroundColor: '#ffffff',
+          border: '1px solid rgba(214, 224, 235, 0.95)',
+          borderRadius: 22,
+          boxShadow: '0 14px 34px rgba(39, 73, 111, 0.10)',
           opacity,
         }}
       >
@@ -252,11 +295,15 @@ const SceneCard: React.FC<{scene: Scene; logoSrc?: string}> = ({
   return (
     <AbsoluteFill
       style={{
-        backgroundColor: '#ffffff',
+        background:
+          'linear-gradient(135deg, #f8fbff 0%, #f3f8fe 42%, #edf4fc 100%)',
         color: '#111827',
         fontFamily: "'Noto Sans JP', sans-serif",
+        overflow: 'hidden',
       }}
     >
+      <BackgroundDecor />
+
       {scene.audioSrc ? <Audio src={assetSrc(scene.audioSrc)} /> : null}
 
       <SlideArea scene={scene} />
@@ -268,9 +315,11 @@ const SceneCard: React.FC<{scene: Scene; logoSrc?: string}> = ({
           top: 0,
           width: SIDEBAR_WIDTH,
           height: CONTENT_HEIGHT,
-          backgroundColor: '#f8fafc',
-          borderLeft: '1px solid #e5e7eb',
+          background:
+            'linear-gradient(180deg, rgba(245,249,254,0.92) 0%, rgba(236,244,252,0.96) 100%)',
+          borderLeft: '1px solid rgba(214, 224, 235, 0.95)',
           boxSizing: 'border-box',
+          backdropFilter: 'blur(3px)',
         }}
       >
         <ChannelBrand logoSrc={logoSrc} />
@@ -293,8 +342,9 @@ const SceneCard: React.FC<{scene: Scene; logoSrc?: string}> = ({
           fontWeight: 700,
           lineHeight: 1.35,
           color: '#111827',
-          backgroundColor: '#ffffff',
-          borderTop: '2px solid #e5e7eb',
+          background:
+            'linear-gradient(180deg, rgba(255,255,255,0.94) 0%, rgba(248,251,255,0.98) 100%)',
+          borderTop: '2px solid rgba(214, 224, 235, 0.95)',
           textAlign: 'center',
           zIndex: 20,
         }}
