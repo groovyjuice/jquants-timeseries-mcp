@@ -6,7 +6,7 @@ import {stat, mkdir, writeFile, readFile, unlink, rm} from 'node:fs/promises';
 import path from 'node:path';
 import {planScenes} from './planner.mjs';
 import {readGoogleDocText} from './drive.mjs';
-import {prepareDriveProject} from './project.mjs';
+import {prepareDriveProject, prepareLocalProject} from './project.mjs';
 import {
   getTtsConfig,
   prepareNarratedScenes,
@@ -193,14 +193,34 @@ const autoRenderConfiguredProject = async () => {
     projectDir = path.join(generatedAudioDir, jobId);
     const publicPrefix = `generated/${jobId}`;
 
-    console.log('Auto project render: loading video plan and slides from Drive');
-    const project = await prepareDriveProject({
-      videoPlanFileId,
-      slidesFolderId,
-      endingSlideFileId,
-      outputDir: projectDir,
-      publicPrefix,
-    });
+    const bundlePath = path.join(cwd, 'project-bundle.tar.gz');
+    let project;
+
+    try {
+      await stat(bundlePath);
+      console.log('Auto project render: extracting bundled project assets');
+      await mkdir(projectDir, {recursive: true});
+      await execFileAsync(
+        'tar',
+        ['-xzf', bundlePath, '-C', projectDir],
+        {cwd, env: childEnv, maxBuffer: 10 * 1024 * 1024},
+      );
+      project = await prepareLocalProject({
+        projectDir,
+        publicPrefix,
+      });
+    } catch (bundleError) {
+      console.log(
+        'Auto project render: local bundle unavailable; falling back to Drive',
+      );
+      project = await prepareDriveProject({
+        videoPlanFileId,
+        slidesFolderId,
+        endingSlideFileId,
+        outputDir: projectDir,
+        publicPrefix,
+      });
+    }
 
     console.log(
       `Auto project render: loaded ${project.props.scenes.length} slides; starting TTS`,
