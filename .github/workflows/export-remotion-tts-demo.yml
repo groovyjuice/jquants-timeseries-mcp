@@ -16,7 +16,7 @@ jobs:
         run: |
           curl --fail --location --retry 8 --retry-delay 5 \
             "https://remotion-video-prototype.onrender.com/demo-tts.mp4" \
-            --output tts_bgm_test_speed1.18_bgm0.02.mp4
+            --output tts_bgm_test_marin_speed1.18_bgm0.02.mp4
           test -s tts_bgm_test_speed1.18_bgm0.02.mp4
 
       - name: Upload demo artifact
@@ -25,3 +25,5 @@ jobs:
           name: tts-bgm-test
           path: tts_bgm_test_speed1.18_bgm0.02.mp4
           if-no-files-found: error
+
+# Export Marin high-quality TTS demo
