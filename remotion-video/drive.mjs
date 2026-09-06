@@ -1,4 +1,6 @@
 import {google} from 'googleapis';
+import {mkdir, writeFile} from 'node:fs/promises';
+import path from 'node:path';
 
 const parseServiceAccount = () => {
   const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
@@ -77,4 +79,63 @@ export const readGoogleDocText = async (documentId) => {
     title: response.data.title || '',
     script,
   };
+};
+
+
+const getDrive = () => google.drive({version: 'v3', auth: getAuth()});
+
+export const readDriveJsonFile = async (fileId) => {
+  if (typeof fileId !== 'string' || !fileId.trim()) {
+    throw new Error('fileId must be a non-empty string');
+  }
+
+  const drive = getDrive();
+  const response = await drive.files.get(
+    {fileId: fileId.trim(), alt: 'media'},
+    {responseType: 'arraybuffer'},
+  );
+  const text = Buffer.from(response.data).toString('utf8');
+  return JSON.parse(text);
+};
+
+export const listDriveFolderFiles = async (folderId) => {
+  if (typeof folderId !== 'string' || !folderId.trim()) {
+    throw new Error('folderId must be a non-empty string');
+  }
+
+  const drive = getDrive();
+  const files = [];
+  let pageToken;
+
+  do {
+    const response = await drive.files.list({
+      q: `'${folderId.trim()}' in parents and trashed = false`,
+      fields: 'nextPageToken, files(id,name,mimeType,size)',
+      pageSize: 1000,
+      pageToken,
+    });
+    files.push(...(response.data.files || []));
+    pageToken = response.data.nextPageToken || undefined;
+  } while (pageToken);
+
+  return files;
+};
+
+export const downloadDriveFile = async ({fileId, outputPath}) => {
+  if (typeof fileId !== 'string' || !fileId.trim()) {
+    throw new Error('fileId must be a non-empty string');
+  }
+  if (typeof outputPath !== 'string' || !outputPath.trim()) {
+    throw new Error('outputPath must be a non-empty string');
+  }
+
+  const drive = getDrive();
+  const response = await drive.files.get(
+    {fileId: fileId.trim(), alt: 'media'},
+    {responseType: 'arraybuffer'},
+  );
+
+  await mkdir(path.dirname(outputPath), {recursive: true});
+  await writeFile(outputPath, Buffer.from(response.data));
+  return outputPath;
 };
