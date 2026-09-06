@@ -396,7 +396,7 @@ export const TestVideo: React.FC<VideoProps> = ({
   logoSrc,
   bgmAsset = 'common/bgm/main_bgm.mp3',
   bgmLoop = true,
-  bgmVolume = 0.05,
+  bgmVolume = 0.02,
   bgmFadeInFrames = 30,
   bgmFadeOutFrames = 45,
 }) => {
