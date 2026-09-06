@@ -96,6 +96,7 @@ const normalizeResult = ({payload, youtube, requestId, metadata}) => {
       ? `https://studio.youtube.com/video/${videoId}/edit`
       : null,
     privacy_status: 'private',
+    contains_synthetic_media: true,
     draft_title:
       process.env.YOUTUBE_DRAFT_TITLE?.trim() ||
       '【下書き】タイトルを設定してください',
@@ -156,6 +157,8 @@ const upload = async ({videoPath, metadataPath}) => {
     `categoryId=${categoryId}`,
     '-F',
     'privacyStatus=private',
+    '-F',
+    'containsSyntheticMedia=true',
     '-F',
     'async_upload=true',
   ];
