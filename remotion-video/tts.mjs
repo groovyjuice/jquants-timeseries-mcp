@@ -4,14 +4,14 @@ import path from 'node:path';
 
 const DEFAULT_MODEL = 'gpt-4o-mini-tts';
 const DEFAULT_VOICE = 'sage';
-const DEFAULT_SPEED = 1.08;
+const DEFAULT_SPEED = 1.14;
 const DEFAULT_INSTRUCTIONS = [
-  'Friendly, calm, and natural.',
+  'Friendly, bright, warm, and natural.',
   'Speak standard Japanese clearly and neutrally.',
-  'Use a warm, approachable tone suitable for a financial-news explainer.',
-  'Keep a slightly brisk but comfortable pace.',
+  'Use a slightly brighter and lighter vocal tone while keeping an intelligent, trustworthy financial-news style.',
+  'Keep a brisk, comfortable pace that feels a little faster than normal conversation.',
   'Keep pronunciation precise, especially for company names, numbers, and financial terms.',
-  'Avoid exaggerated accents, slang, or theatrical delivery.',
+  'Avoid exaggerated accents, slang, childish delivery, or theatrical acting.',
   'Read the supplied text faithfully without adding commentary.',
 ].join(' ');
 
