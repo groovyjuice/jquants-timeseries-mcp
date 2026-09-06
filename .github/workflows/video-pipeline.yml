@@ -11,6 +11,12 @@ on:
         description: "Parallel render segment count"
         required: false
         default: "12"
+  push:
+    branches:
+      - video-pipeline-trigger
+    paths:
+      - ".github/video-pipeline-trigger.txt"
+
 jobs:
   prepare:
     runs-on: ubuntu-latest
