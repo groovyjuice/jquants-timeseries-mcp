@@ -4,7 +4,7 @@ import path from 'node:path';
 
 const DEFAULT_MODEL = 'gpt-4o-mini-tts';
 const DEFAULT_VOICE = 'sage';
-const DEFAULT_SPEED = 1.14;
+const DEFAULT_SPEED = 1.18;
 const DEFAULT_INSTRUCTIONS = [
   'Friendly, bright, warm, and natural.',
   'Speak standard Japanese clearly and neutrally.',
@@ -17,8 +17,9 @@ const DEFAULT_INSTRUCTIONS = [
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
-export const getTtsConfig = () => {
-  const parsedSpeed = Number(process.env.OPENAI_TTS_SPEED || DEFAULT_SPEED);
+export const getTtsConfig = ({speed} = {}) => {
+  const requestedSpeed = speed ?? process.env.OPENAI_TTS_SPEED ?? DEFAULT_SPEED;
+  const parsedSpeed = Number(requestedSpeed);
   return {
     configured: Boolean(process.env.OPENAI_API_KEY),
     model: process.env.OPENAI_TTS_MODEL || DEFAULT_MODEL,
@@ -174,6 +175,7 @@ export const synthesizeNarration = async ({
   text,
   outputPath,
   fps = 30,
+  speed,
 }) => {
   if (typeof text !== 'string' || text.trim().length === 0) {
     throw new Error('TTS text must be a non-empty string');
@@ -187,7 +189,7 @@ export const synthesizeNarration = async ({
     throw new Error('OPENAI_API_KEY is not configured');
   }
 
-  const config = getTtsConfig();
+  const config = getTtsConfig({speed});
   const client = new OpenAI({apiKey: process.env.OPENAI_API_KEY});
 
   const response = await client.audio.speech.create({
@@ -222,6 +224,7 @@ export const prepareNarratedScenes = async ({
   fps = 30,
   paddingFrames = 12,
   jobId = String(Date.now()),
+  ttsSpeed,
 }) => {
   if (!Array.isArray(scenes) || scenes.length === 0) {
     throw new Error('scenes must be a non-empty array');
@@ -247,6 +250,7 @@ export const prepareNarratedScenes = async ({
       text: narration,
       outputPath,
       fps,
+      speed: ttsSpeed,
     });
 
     const minimumDuration =
@@ -283,6 +287,6 @@ export const prepareNarratedScenes = async ({
     generatedFiles,
     metrics,
     totalFrames: cursor,
-    config: getTtsConfig(),
+    config: getTtsConfig({speed: ttsSpeed}),
   };
 };
