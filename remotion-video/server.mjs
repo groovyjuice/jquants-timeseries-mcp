@@ -138,6 +138,257 @@ const cleanupGenerated = async (files) => {
   await Promise.all((files || []).map((file) => unlink(file).catch(() => {})));
 };
 
+const resolveFfmpegBinary = async () => {
+  if (process.env.FFMPEG_PATH) return process.env.FFMPEG_PATH;
+
+  try {
+    const {stdout} = await execFileAsync('sh', ['-lc', 'command -v ffmpeg'], {
+      cwd,
+      env: childEnv,
+    });
+    const found = stdout.trim();
+    if (found) return found;
+  } catch {
+    // Search Remotion/node_modules below.
+  }
+
+  const {stdout} = await execFileAsync(
+    'sh',
+    [
+      '-lc',
+      'find node_modules -type f -name ffmpeg -perm -111 2>/dev/null | head -n 1',
+    ],
+    {cwd, env: childEnv, maxBuffer: 1024 * 1024},
+  );
+  const found = stdout.trim();
+  if (!found) {
+    throw new Error('ffmpeg binary could not be located');
+  }
+  return path.resolve(cwd, found);
+};
+
+const rebaseScenes = (scenes) => {
+  let cursor = 0;
+  return scenes.map((scene) => {
+    const rebased = {...scene, from: cursor};
+    cursor += scene.duration;
+    return rebased;
+  });
+};
+
+const splitScenesForRender = (
+  scenes,
+  {maxFrames = 5400, maxScenes = 5} = {},
+) => {
+  const chunks = [];
+  let current = [];
+  let currentFrames = 0;
+
+  for (const scene of scenes) {
+    const wouldOverflowFrames =
+      current.length > 0 && currentFrames + scene.duration > maxFrames;
+    const wouldOverflowScenes = current.length >= maxScenes;
+
+    if (wouldOverflowFrames || wouldOverflowScenes) {
+      chunks.push(current);
+      current = [];
+      currentFrames = 0;
+    }
+
+    current.push(scene);
+    currentFrames += scene.duration;
+  }
+
+  if (current.length > 0) chunks.push(current);
+  return chunks;
+};
+
+const concatSegmentsAndAddBgm = async ({
+  segmentPaths,
+  outputFilename,
+  totalFrames,
+  props,
+}) => {
+  if (!segmentPaths.length) {
+    throw new Error('No rendered segments to concatenate');
+  }
+
+  const ffmpeg = await resolveFfmpegBinary();
+  const concatListPath = path.join(outDir, 'concat-' + Date.now() + '.txt');
+  const concatOutput = path.join(outDir, 'concat-' + Date.now() + '.mp4');
+  const finalOutput = path.join(outDir, outputFilename);
+
+  const concatList = segmentPaths
+    .map((segment) => "file '" + segment + "'")
+    .join('\n');
+  await writeFile(concatListPath, concatList + '\n', 'utf8');
+
+  try {
+    await execFileAsync(
+      ffmpeg,
+      [
+        '-y',
+        '-f',
+        'concat',
+        '-safe',
+        '0',
+        '-i',
+        concatListPath,
+        '-c',
+        'copy',
+        concatOutput,
+      ],
+      {
+        cwd,
+        env: childEnv,
+        maxBuffer: 10 * 1024 * 1024,
+      },
+    );
+
+    const bgmVolume =
+      typeof props.bgmVolume === 'number' ? props.bgmVolume : 0.02;
+    const fadeInFrames =
+      typeof props.bgmFadeInFrames === 'number' ? props.bgmFadeInFrames : 30;
+    const fadeOutFrames =
+      typeof props.bgmFadeOutFrames === 'number' ? props.bgmFadeOutFrames : 45;
+    const durationSeconds = totalFrames / 30;
+    const fadeInSeconds = Math.max(0, fadeInFrames / 30);
+    const fadeOutSeconds = Math.max(0, fadeOutFrames / 30);
+    const fadeOutStart = Math.max(0, durationSeconds - fadeOutSeconds);
+    const bgmPath = path.join(
+      cwd,
+      'public',
+      String(props.bgmAsset || 'common/bgm/main_bgm.mp3').replace(/^\//, ''),
+    );
+
+    const bgmFilters = ['[1:a]volume=' + bgmVolume];
+    if (fadeInSeconds > 0) {
+      bgmFilters.push(
+        'afade=t=in:st=0:d=' + fadeInSeconds.toFixed(3),
+      );
+    }
+    if (fadeOutSeconds > 0) {
+      bgmFilters.push(
+        'afade=t=out:st=' +
+          fadeOutStart.toFixed(3) +
+          ':d=' +
+          fadeOutSeconds.toFixed(3),
+      );
+    }
+    const bgmFilter = bgmFilters.join(',');
+
+    await execFileAsync(
+      ffmpeg,
+      [
+        '-y',
+        '-i',
+        concatOutput,
+        '-stream_loop',
+        '-1',
+        '-i',
+        bgmPath,
+        '-filter_complex',
+        bgmFilter +
+          '[bgm];[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=0[a]',
+        '-map',
+        '0:v:0',
+        '-map',
+        '[a]',
+        '-c:v',
+        'copy',
+        '-c:a',
+        'aac',
+        '-b:a',
+        '320k',
+        '-shortest',
+        finalOutput,
+      ],
+      {
+        cwd,
+        env: childEnv,
+        maxBuffer: 20 * 1024 * 1024,
+      },
+    );
+  } finally {
+    await unlink(concatListPath).catch(() => {});
+    await unlink(concatOutput).catch(() => {});
+  }
+
+  return finalOutput;
+};
+
+const renderSegmentedVideo = async ({
+  outputFilename,
+  prepared,
+}) => {
+  const chunks = splitScenesForRender(prepared.scenes);
+  const segmentPaths = [];
+
+  console.log(
+    'Segmented render: ' +
+      chunks.length +
+      ' segments for ' +
+      prepared.totalFrames +
+      ' frames',
+  );
+
+  try {
+    for (let index = 0; index < chunks.length; index++) {
+      const chunk = chunks[index];
+      const segmentFilename =
+        'segment-' + String(index + 1).padStart(2, '0') + '.mp4';
+      const segmentFrames = chunk.reduce(
+        (sum, scene) => sum + scene.duration,
+        0,
+      );
+
+      console.log(
+        'Segmented render: segment ' +
+          (index + 1) +
+          '/' +
+          chunks.length +
+          ', scenes=' +
+          chunk.length +
+          ', frames=' +
+          segmentFrames,
+      );
+
+      const segmentProps = {
+        ...prepared.props,
+        scenes: rebaseScenes(chunk),
+        bgmVolume: 0,
+        bgmFadeInFrames: 0,
+        bgmFadeOutFrames: 0,
+      };
+
+      const segmentPath = await renderVideo(
+        'TestVideo',
+        segmentFilename,
+        segmentProps,
+      );
+      segmentPaths.push(segmentPath);
+      console.log(
+        'Segmented render: completed segment ' +
+          (index + 1) +
+          '/' +
+          chunks.length,
+      );
+    }
+
+    console.log('Segmented render: concatenating segments and mixing BGM');
+    return await concatSegmentsAndAddBgm({
+      segmentPaths,
+      outputFilename,
+      totalFrames: prepared.totalFrames,
+      props: prepared.props,
+    });
+  } finally {
+    await Promise.all(
+      segmentPaths.map((segment) => unlink(segment).catch(() => {})),
+    );
+  }
+};
+
 const buildNarratedProps = async (props, jobId) => {
   const prepared = await prepareNarratedScenes({
     scenes: props.scenes,
@@ -230,9 +481,12 @@ const autoRenderConfiguredProject = async () => {
     generatedAudioFiles = prepared.generatedFiles;
 
     console.log(
-      `Auto project render: TTS complete, totalFrames=${prepared.totalFrames}; rendering video`,
+      `Auto project render: TTS complete, totalFrames=${prepared.totalFrames}; rendering video in segments`,
     );
-    await renderVideo('TestVideo', outputFilename, prepared.props);
+    await renderSegmentedVideo({
+      outputFilename,
+      prepared,
+    });
 
     console.log(`AUTO PROJECT RENDER COMPLETE: ${output}`);
   } catch (error) {
