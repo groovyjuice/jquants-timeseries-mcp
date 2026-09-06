@@ -100,7 +100,7 @@ export const prepareDriveProject = async ({
       bgmVolume:
         typeof plan.bgm_volume === 'number' && Number.isFinite(plan.bgm_volume)
           ? plan.bgm_volume
-          : 0.02,
+          : 0.025,
       bgmFadeInFrames:
         typeof plan.bgm_fade_in_frames === 'number'
           ? plan.bgm_fade_in_frames
@@ -167,7 +167,7 @@ export const prepareLocalProject = async ({
       bgmVolume:
         typeof plan.bgm_volume === 'number' && Number.isFinite(plan.bgm_volume)
           ? plan.bgm_volume
-          : 0.02,
+          : 0.025,
       bgmFadeInFrames:
         typeof plan.bgm_fade_in_frames === 'number'
           ? plan.bgm_fade_in_frames
