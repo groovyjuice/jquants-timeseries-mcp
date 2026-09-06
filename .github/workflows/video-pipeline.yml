@@ -249,19 +249,21 @@ jobs:
               raise SystemExit(f"True peak too high: {tp}")
           PY
 
-      - name: Require YouTube OAuth secrets
+      - name: Require Upload-Post credentials
         shell: bash
         run: |
           set -euo pipefail
-          test -n "$YOUTUBE_CLIENT_ID"
-          test -n "$YOUTUBE_CLIENT_SECRET"
-          test -n "$YOUTUBE_REFRESH_TOKEN"
+          test -n "$UPLOAD_POST_API_KEY"
+          test -n "$UPLOAD_POST_USER"
 
       - name: Upload private draft to YouTube
         shell: bash
         run: |
           set -euo pipefail
-          node remotion-video/youtube-upload.mjs             final_video.mp4             publish/publish_metadata.json             publish/youtube_upload.json
+          node remotion-video/upload-post-youtube.mjs \
+            final_video.mp4 \
+            publish/publish_metadata.json \
+            publish/youtube_upload.json
 
       - name: Verify YouTube draft result
         shell: bash
