@@ -159,6 +159,72 @@ const buildNarratedProps = async (props, jobId) => {
   };
 };
 
+
+const autoRenderConfiguredProject = async () => {
+  if (process.env.AUTO_RENDER_DRIVE_PROJECT !== '1') return;
+
+  const videoPlanFileId = process.env.AUTO_PROJECT_VIDEO_PLAN_FILE_ID;
+  const slidesFolderId = process.env.AUTO_PROJECT_SLIDES_FOLDER_ID;
+  const endingSlideFileId = process.env.AUTO_PROJECT_ENDING_SLIDE_FILE_ID;
+  const outputFilename =
+    process.env.AUTO_PROJECT_OUTPUT_FILENAME || 'project-output.mp4';
+
+  if (!videoPlanFileId || !slidesFolderId || !endingSlideFileId) {
+    console.error(
+      'Auto project render skipped: Drive project environment variables are incomplete',
+    );
+    return;
+  }
+
+  let projectDir = null;
+  let generatedAudioFiles = [];
+
+  try {
+    const output = path.join(outDir, outputFilename);
+    try {
+      await stat(output);
+      console.log(`Auto project output already exists: ${output}`);
+      return;
+    } catch {
+      // Render it below.
+    }
+
+    const jobId = `auto-project-${Date.now()}`;
+    projectDir = path.join(generatedAudioDir, jobId);
+    const publicPrefix = `generated/${jobId}`;
+
+    console.log('Auto project render: loading video plan and slides from Drive');
+    const project = await prepareDriveProject({
+      videoPlanFileId,
+      slidesFolderId,
+      endingSlideFileId,
+      outputDir: projectDir,
+      publicPrefix,
+    });
+
+    console.log(
+      `Auto project render: loaded ${project.props.scenes.length} slides; starting TTS`,
+    );
+    const props = validateProps(project.props);
+    const prepared = await buildNarratedProps(props, jobId);
+    generatedAudioFiles = prepared.generatedFiles;
+
+    console.log(
+      `Auto project render: TTS complete, totalFrames=${prepared.totalFrames}; rendering video`,
+    );
+    await renderVideo('TestVideo', outputFilename, prepared.props);
+
+    console.log(`AUTO PROJECT RENDER COMPLETE: ${output}`);
+  } catch (error) {
+    console.error('AUTO PROJECT RENDER FAILED:', error);
+  } finally {
+    await cleanupGenerated(generatedAudioFiles);
+    if (projectDir) {
+      await rm(projectDir, {recursive: true, force: true}).catch(() => {});
+    }
+  }
+};
+
 const isAuthorized = (req) => {
   const expected = process.env.VIDEO_API_TOKEN;
   if (!expected) return false;
@@ -196,6 +262,24 @@ const server = http.createServer(async (req, res) => {
     } catch {
       res.writeHead(404, {'content-type': 'application/json'});
       res.end(JSON.stringify({ok: false, error: 'TTS demo video not available'}));
+    }
+    return;
+  }
+
+
+  if (
+    (req.url === '/project-output.mp4' ||
+      req.url?.startsWith('/project-output.mp4?')) &&
+    req.method === 'GET'
+  ) {
+    try {
+      const filename =
+        process.env.AUTO_PROJECT_OUTPUT_FILENAME || 'project-output.mp4';
+      const output = path.join(outDir, filename);
+      await streamVideo(output, res, filename);
+    } catch {
+      res.writeHead(404, {'content-type': 'application/json'});
+      res.end(JSON.stringify({ok: false, error: 'Project video not available'}));
     }
     return;
   }
@@ -479,4 +563,7 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(port, () => {
   console.log(`Listening on :${port}`);
+  autoRenderConfiguredProject().catch((error) => {
+    console.error('Auto project render startup failure:', error);
+  });
 });
