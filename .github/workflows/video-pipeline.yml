@@ -144,7 +144,13 @@ jobs:
   finalize:
     needs: render
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
+    env:
+      YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+      YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+      YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+      YOUTUBE_CATEGORY_ID: "25"
+      YOUTUBE_DRAFT_TITLE: "【下書き】タイトルを設定してください"
     steps:
       - name: Checkout common assets
         uses: actions/checkout@v4
@@ -239,6 +245,36 @@ jobs:
               raise SystemExit(f"Integrated loudness out of range: {i}")
           if tp > -0.5:
               raise SystemExit(f"True peak too high: {tp}")
+          PY
+
+      - name: Require YouTube OAuth secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$YOUTUBE_CLIENT_ID"
+          test -n "$YOUTUBE_CLIENT_SECRET"
+          test -n "$YOUTUBE_REFRESH_TOKEN"
+
+      - name: Upload private draft to YouTube
+        shell: bash
+        run: |
+          set -euo pipefail
+          node remotion-video/youtube-upload.mjs             final_video.mp4             publish/publish_metadata.json             publish/youtube_upload.json
+
+      - name: Verify YouTube draft result
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          p = "publish/youtube_upload.json"
+          data = json.load(open(p, encoding="utf-8"))
+          assert data["video_id"], "Missing YouTube video id"
+          assert data["privacy_status"] == "private", data
+          assert data["description_set"] is True, data
+          assert data["tag_count"] > 0, data
+          print("video_id=" + data["video_id"])
+          print("studio_edit_url=" + data["studio_edit_url"])
           PY
 
       - name: Assemble delivery folder
