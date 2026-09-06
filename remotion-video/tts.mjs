@@ -1,4 +1,4 @@
-import OpenAI from 'openai';
+import OpenAI, {toFile} from 'openai';
 import {mkdir, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 
@@ -11,11 +11,244 @@ const DEFAULT_INSTRUCTIONS = [
   'Use a slightly bright, smooth vocal tone while keeping an intelligent, trustworthy financial-news style.',
   'Keep a brisk, comfortable pace that feels a little faster than normal conversation.',
   'Keep pronunciation precise, especially for company names, numbers, and financial terms.',
+  'For Japanese stock-market terminology, always pronounce 終値 as おわりね, never おわね.',
   'Avoid breathiness, raspiness, muffled resonance, exaggerated accents, slang, childish delivery, or theatrical acting.',
   'Read the supplied text faithfully without adding commentary.',
 ].join(' ');
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+
+
+const PRONUNCIATION_REPLACEMENTS = [
+  ['終値', 'おわりね'],
+];
+
+export const normalizeTtsText = (text) => {
+  let normalized = String(text ?? '');
+  for (const [surface, reading] of PRONUNCIATION_REPLACEMENTS) {
+    normalized = normalized.split(surface).join(reading);
+  }
+  return normalized;
+};
+
+const splitSubtitle = (text, maxChars = 34) => {
+  const normalized = String(text ?? '').replace(/\s+/g, ' ').trim();
+  if (!normalized) return [''];
+
+  const sentences = normalized
+    .split(/(?<=[。！？!?])/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  const chunks = [];
+  let current = '';
+
+  const pushCurrent = () => {
+    if (current.trim()) chunks.push(current.trim());
+    current = '';
+  };
+
+  for (const sentence of sentences) {
+    if (sentence.length <= maxChars) {
+      if (!current) {
+        current = sentence;
+      } else if ((current + sentence).length <= maxChars) {
+        current += sentence;
+      } else {
+        pushCurrent();
+        current = sentence;
+      }
+      continue;
+    }
+
+    pushCurrent();
+    const clauses = sentence
+      .split(/(?<=[、，,])/)
+      .map((part) => part.trim())
+      .filter(Boolean);
+
+    let clauseBuffer = '';
+    for (const clause of clauses) {
+      if (!clauseBuffer) {
+        clauseBuffer = clause;
+      } else if ((clauseBuffer + clause).length <= maxChars) {
+        clauseBuffer += clause;
+      } else {
+        chunks.push(clauseBuffer);
+        clauseBuffer = clause;
+      }
+    }
+    if (clauseBuffer) chunks.push(clauseBuffer);
+  }
+
+  pushCurrent();
+  return chunks.length ? chunks : [normalized];
+};
+
+const alignmentUnits = (text) =>
+  normalizeTtsText(text)
+    .replace(/[\s。、，,.！？!?：:；;「」『』（）()\[\]【】\-ー・]/g, '')
+    .length;
+
+const buildFallbackSubtitleCues = ({
+  text,
+  durationSeconds,
+  fps,
+}) => {
+  const chunks = splitSubtitle(text);
+  const weights = chunks.map((chunk) => Math.max(1, alignmentUnits(chunk)));
+  const totalWeight = weights.reduce((sum, value) => sum + value, 0);
+  const totalFrames = Math.max(1, Math.ceil(durationSeconds * fps));
+
+  let cursor = 0;
+  return chunks.map((chunk, index) => {
+    const startFrame = cursor;
+    const proportionalEnd =
+      index === chunks.length - 1
+        ? totalFrames
+        : Math.round(
+            (weights.slice(0, index + 1).reduce((sum, value) => sum + value, 0) /
+              totalWeight) *
+              totalFrames,
+          );
+    const endFrame = Math.max(startFrame + 1, proportionalEnd);
+    cursor = endFrame;
+    return {startFrame, endFrame, text: chunk};
+  });
+};
+
+const buildSubtitleCuesFromWords = ({
+  text,
+  words,
+  durationSeconds,
+  fps,
+}) => {
+  const chunks = splitSubtitle(text);
+  if (chunks.length <= 1) {
+    const firstWord = words?.find((word) => Number.isFinite(word?.start));
+    const lastWord = [...(words || [])]
+      .reverse()
+      .find((word) => Number.isFinite(word?.end));
+
+    return [
+      {
+        startFrame: Math.max(
+          0,
+          Math.floor((firstWord?.start ?? 0) * fps),
+        ),
+        endFrame: Math.max(
+          1,
+          Math.ceil((lastWord?.end ?? durationSeconds) * fps),
+        ),
+        text: chunks[0] ?? '',
+      },
+    ];
+  }
+
+  const validWords = (words || [])
+    .filter(
+      (word) =>
+        Number.isFinite(word?.start) &&
+        Number.isFinite(word?.end) &&
+        word.end >= word.start,
+    )
+    .map((word) => ({
+      ...word,
+      units: Math.max(1, alignmentUnits(word.word || '')),
+    }));
+
+  if (validWords.length < 2) {
+    return buildFallbackSubtitleCues({text, durationSeconds, fps});
+  }
+
+  const chunkUnits = chunks.map((chunk) =>
+    Math.max(1, alignmentUnits(chunk)),
+  );
+  const totalChunkUnits = chunkUnits.reduce((sum, value) => sum + value, 0);
+  const totalWordUnits = validWords.reduce(
+    (sum, word) => sum + word.units,
+    0,
+  );
+
+  const boundariesSeconds = [
+    Math.max(0, validWords[0].start),
+  ];
+
+  let chunkCumulative = 0;
+  let wordCumulative = 0;
+  let wordIndex = 0;
+
+  for (let chunkIndex = 0; chunkIndex < chunks.length - 1; chunkIndex++) {
+    chunkCumulative += chunkUnits[chunkIndex];
+    const targetWordUnits =
+      (chunkCumulative / totalChunkUnits) * totalWordUnits;
+
+    while (
+      wordIndex < validWords.length - 1 &&
+      wordCumulative + validWords[wordIndex].units < targetWordUnits
+    ) {
+      wordCumulative += validWords[wordIndex].units;
+      wordIndex++;
+    }
+
+    const nextWord = validWords[Math.min(wordIndex + 1, validWords.length - 1)];
+    const previousBoundary =
+      boundariesSeconds[boundariesSeconds.length - 1];
+    boundariesSeconds.push(
+      Math.max(previousBoundary + 1 / fps, nextWord.start),
+    );
+  }
+
+  boundariesSeconds.push(
+    Math.max(
+      boundariesSeconds[boundariesSeconds.length - 1] + 1 / fps,
+      validWords[validWords.length - 1].end,
+    ),
+  );
+
+  return chunks.map((chunk, index) => ({
+    startFrame: Math.max(0, Math.floor(boundariesSeconds[index] * fps)),
+    endFrame: Math.max(
+      Math.floor(boundariesSeconds[index] * fps) + 1,
+      Math.ceil(boundariesSeconds[index + 1] * fps),
+    ),
+    text: chunk,
+  }));
+};
+
+const alignSubtitlesToAudio = async ({
+  client,
+  audioBuffer,
+  displayText,
+  durationSeconds,
+  fps,
+}) => {
+  const file = await toFile(audioBuffer, 'narration.wav', {
+    type: 'audio/wav',
+  });
+
+  const transcript = await client.audio.transcriptions.create({
+    file,
+    model: process.env.OPENAI_ALIGNMENT_MODEL || 'whisper-1',
+    language: 'ja',
+    response_format: 'verbose_json',
+    timestamp_granularities: ['word'],
+    temperature: 0,
+  });
+
+  const words = Array.isArray(transcript.words) ? transcript.words : [];
+  return {
+    subtitleCues: buildSubtitleCuesFromWords({
+      text: displayText,
+      words,
+      durationSeconds,
+      fps,
+    }),
+    subtitleAlignment: words.length
+      ? 'word-timestamps'
+      : 'duration-fallback',
+  };
+};
 
 export const getTtsConfig = ({speed, voice} = {}) => {
   const requestedSpeed = speed ?? process.env.OPENAI_TTS_SPEED ?? DEFAULT_SPEED;
@@ -196,7 +429,7 @@ export const synthesizeNarration = async ({
   const response = await client.audio.speech.create({
     model: config.model,
     voice: config.voice,
-    input: text.trim(),
+    input: normalizeTtsText(text.trim()),
     instructions: config.instructions,
     response_format: 'wav',
     speed: config.speed,
@@ -208,12 +441,40 @@ export const synthesizeNarration = async ({
 
   const analysis = buildMouthCuesFromWav(audioBuffer, fps);
 
+  let subtitleCues;
+  let subtitleAlignment;
+  try {
+    const aligned = await alignSubtitlesToAudio({
+      client,
+      audioBuffer,
+      displayText: text.trim(),
+      durationSeconds: analysis.durationSeconds,
+      fps,
+    });
+    subtitleCues = aligned.subtitleCues;
+    subtitleAlignment = aligned.subtitleAlignment;
+  } catch (error) {
+    console.warn(
+      'Subtitle word alignment failed; falling back to duration-based cues:',
+      String(error),
+    );
+    subtitleCues = buildFallbackSubtitleCues({
+      text: text.trim(),
+      durationSeconds: analysis.durationSeconds,
+      fps,
+    });
+    subtitleAlignment = 'duration-fallback';
+  }
+
   return {
     path: outputPath,
     bytes: audioBuffer.length,
     model: config.model,
     voice: config.voice,
     speed: config.speed,
+    spokenText: normalizeTtsText(text.trim()),
+    subtitleCues,
+    subtitleAlignment,
     ...analysis,
   };
 };
@@ -237,24 +498,67 @@ export const prepareNarratedScenes = async ({
   const prepared = [];
   const generatedFiles = [];
   const metrics = [];
+  const synthesisResults = new Array(scenes.length);
+
+  const requestedConcurrency = Number(
+    process.env.TTS_CONCURRENCY || 4,
+  );
+  const concurrency = Math.max(
+    1,
+    Math.min(
+      scenes.length,
+      Number.isFinite(requestedConcurrency)
+        ? Math.floor(requestedConcurrency)
+        : 4,
+    ),
+  );
+
+  let nextIndex = 0;
+
+  const worker = async () => {
+    while (true) {
+      const index = nextIndex++;
+      if (index >= scenes.length) return;
+
+      const scene = scenes[index];
+      const narration =
+        typeof scene.narration === 'string' && scene.narration.trim()
+          ? scene.narration
+          : scene.body;
+
+      const filename = `tts-${jobId}-${index}.wav`;
+      const outputPath = path.join(outputDir, filename);
+      const result = await synthesizeNarration({
+        text: narration,
+        outputPath,
+        fps,
+        speed: ttsSpeed,
+        voice: ttsVoice,
+      });
+
+      synthesisResults[index] = {
+        scene,
+        narration,
+        filename,
+        outputPath,
+        result,
+      };
+    }
+  };
+
+  await Promise.all(
+    Array.from({length: concurrency}, () => worker()),
+  );
+
   let cursor = 0;
-
-  for (let index = 0; index < scenes.length; index++) {
-    const scene = scenes[index];
-    const narration =
-      typeof scene.narration === 'string' && scene.narration.trim()
-        ? scene.narration
-        : scene.body;
-
-    const filename = `tts-${jobId}-${index}.wav`;
-    const outputPath = path.join(outputDir, filename);
-    const result = await synthesizeNarration({
-      text: narration,
+  for (let index = 0; index < synthesisResults.length; index++) {
+    const {
+      scene,
+      narration,
+      filename,
       outputPath,
-      fps,
-      speed: ttsSpeed,
-      voice: ttsVoice,
-    });
+      result,
+    } = synthesisResults[index];
 
     const minimumDuration =
       Math.ceil(result.durationSeconds * fps) + paddingFrames;
@@ -271,6 +575,7 @@ export const prepareNarratedScenes = async ({
       narration,
       audioSrc: `${publicPrefix}/${filename}`,
       mouthCues: result.mouthCues,
+      subtitleCues: result.subtitleCues,
     });
 
     metrics.push({
@@ -279,6 +584,7 @@ export const prepareNarratedScenes = async ({
       durationFrames: duration,
       bytes: result.bytes,
       analysis: result.analysis,
+      subtitleAlignment: result.subtitleAlignment,
     });
 
     generatedFiles.push(outputPath);
