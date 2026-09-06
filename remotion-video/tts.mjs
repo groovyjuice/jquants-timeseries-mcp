@@ -6,12 +6,12 @@ const DEFAULT_MODEL = 'gpt-4o-mini-tts';
 const DEFAULT_VOICE = 'marin';
 const DEFAULT_SPEED = 1.18;
 const DEFAULT_INSTRUCTIONS = [
-  'Clean, polished, studio-quality narration with a clear broadcast-style sound.'
+  'Clean, polished, studio-quality narration with a clear broadcast-style sound.',
   'Speak standard Japanese clearly and neutrally.',
-  'Use a slightly bright, smooth vocal tone while keeping an intelligent, trustworthy financial-news style.'
+  'Use a slightly bright, smooth vocal tone while keeping an intelligent, trustworthy financial-news style.',
   'Keep a brisk, comfortable pace that feels a little faster than normal conversation.',
   'Keep pronunciation precise, especially for company names, numbers, and financial terms.',
-  'Avoid breathiness, raspiness, muffled resonance, exaggerated accents, slang, childish delivery, or theatrical acting.'
+  'Avoid breathiness, raspiness, muffled resonance, exaggerated accents, slang, childish delivery, or theatrical acting.',
   'Read the supplied text faithfully without adding commentary.',
 ].join(' ');
 
