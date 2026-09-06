@@ -1,9 +1,14 @@
+export type MouthState = 0 | 1 | 2;
+
 export type Scene = {
   from: number;
   duration: number;
   title: string;
   body: string;
+  narration?: string;
   emotion: 'normal' | 'surprise' | 'serious' | 'smile';
+  audioSrc?: string;
+  mouthCues?: MouthState[];
 };
 
 export const scenes: Scene[] = [

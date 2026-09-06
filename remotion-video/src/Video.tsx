@@ -4,13 +4,18 @@ import '@fontsource/noto-sans-jp/800.css';
 import React from 'react';
 import {
   AbsoluteFill,
+  Audio,
   Img,
   Sequence,
   interpolate,
   staticFile,
   useCurrentFrame,
 } from 'remotion';
-import {scenes as defaultScenes, type Scene} from './scenes';
+import {
+  scenes as defaultScenes,
+  type MouthState,
+  type Scene,
+} from './scenes';
 
 export type VideoProps = {
   scenes?: Scene[];
@@ -41,27 +46,32 @@ const AvatarLayer: React.FC<{src: string}> = ({src}) => (
   />
 );
 
-const Avatar: React.FC<{emotion: Scene['emotion']}> = ({emotion}) => {
+const Avatar: React.FC<{
+  emotion: Scene['emotion'];
+  mouthCues?: MouthState[];
+}> = ({emotion, mouthCues}) => {
   const frame = useCurrentFrame();
 
-  // Subtle deterministic body motion.
   const bob = Math.sin(frame / 11) * 4;
 
-  // Smile keeps the eyes closed continuously, so no blink animation is applied.
   const isSmile = emotion === 'smile';
   const blinkPhase = frame % 120;
   const isBlinking = !isSmile && blinkPhase >= 114 && blinkPhase <= 118;
 
-  // Prototype mouth animation: closed -> half -> open -> half.
   const mouthPhase = frame % 12;
+  const fallbackMouthState: MouthState =
+    mouthPhase < 3 ? 0 : mouthPhase < 6 ? 1 : mouthPhase < 9 ? 2 : 1;
+
+  const mouthState: MouthState = mouthCues
+    ? (mouthCues[frame] ?? 0)
+    : fallbackMouthState;
+
   const mouthSrc =
-    mouthPhase < 3
+    mouthState === 0
       ? avatarAssets.mouthClosed
-      : mouthPhase < 6
+      : mouthState === 1
         ? avatarAssets.mouthHalf
-        : mouthPhase < 9
-          ? avatarAssets.mouthOpen
-          : avatarAssets.mouthHalf;
+        : avatarAssets.mouthOpen;
 
   const baseSrc =
     emotion === 'serious'
@@ -98,11 +108,7 @@ const Avatar: React.FC<{emotion: Scene['emotion']}> = ({emotion}) => {
   );
 };
 
-const SceneCard: React.FC<{
-  title: string;
-  body: string;
-  emotion: Scene['emotion'];
-}> = ({title, body, emotion}) => {
+const SceneCard: React.FC<{scene: Scene}> = ({scene}) => {
   const frame = useCurrentFrame();
   const opacity = interpolate(frame, [0, 15], [0, 1], {
     extrapolateRight: 'clamp',
@@ -117,12 +123,18 @@ const SceneCard: React.FC<{
         padding: 120,
       }}
     >
+      {scene.audioSrc ? <Audio src={staticFile(scene.audioSrc)} /> : null}
+
       <div style={{opacity, maxWidth: 1160}}>
-        <div style={{fontSize: 94, fontWeight: 800, lineHeight: 1.1}}>{title}</div>
-        <div style={{fontSize: 50, marginTop: 48, lineHeight: 1.5}}>{body}</div>
+        <div style={{fontSize: 94, fontWeight: 800, lineHeight: 1.1}}>
+          {scene.title}
+        </div>
+        <div style={{fontSize: 50, marginTop: 48, lineHeight: 1.5}}>
+          {scene.body}
+        </div>
       </div>
 
-      <Avatar emotion={emotion} />
+      <Avatar emotion={scene.emotion} mouthCues={scene.mouthCues} />
 
       <div
         style={{
@@ -138,7 +150,7 @@ const SceneCard: React.FC<{
           zIndex: 20,
         }}
       >
-        {body}
+        {scene.narration ?? scene.body}
       </div>
     </AbsoluteFill>
   );
@@ -149,11 +161,7 @@ export const TestVideo: React.FC<VideoProps> = ({scenes = defaultScenes}) => {
     <AbsoluteFill>
       {scenes.map((scene, i) => (
         <Sequence key={i} from={scene.from} durationInFrames={scene.duration}>
-          <SceneCard
-            title={scene.title}
-            body={scene.body}
-            emotion={scene.emotion}
-          />
+          <SceneCard scene={scene} />
         </Sequence>
       ))}
     </AbsoluteFill>

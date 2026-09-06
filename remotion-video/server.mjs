@@ -2,15 +2,21 @@ import http from 'node:http';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {createReadStream} from 'node:fs';
-import {stat, mkdir, writeFile, unlink} from 'node:fs/promises';
+import {stat, mkdir, writeFile, readFile, unlink} from 'node:fs/promises';
 import path from 'node:path';
 import {planScenes} from './planner.mjs';
 import {readGoogleDocText} from './drive.mjs';
+import {
+  getTtsConfig,
+  prepareNarratedScenes,
+  synthesizeNarration,
+} from './tts.mjs';
 
 const execFileAsync = promisify(execFile);
 const port = Number(process.env.PORT || 10000);
 const cwd = process.cwd();
 const outDir = path.join(cwd, 'out');
+const generatedAudioDir = path.join(cwd, 'public', 'generated');
 
 const childEnv = {
   ...process.env,
@@ -40,9 +46,16 @@ const validateProps = (props) => {
       typeof scene.duration !== 'number' ||
       typeof scene.title !== 'string' ||
       typeof scene.body !== 'string' ||
-      !['normal', 'surprise', 'serious'].includes(scene.emotion)
+      !['normal', 'surprise', 'serious', 'smile'].includes(scene.emotion)
     ) {
       throw new Error(`Invalid scene at index ${index}`);
+    }
+
+    if (
+      scene.narration !== undefined &&
+      typeof scene.narration !== 'string'
+    ) {
+      throw new Error(`Invalid narration at scene ${index}`);
     }
   }
 
@@ -90,14 +103,40 @@ const renderVideo = async (
   return output;
 };
 
-const streamVideo = async (output, res, filename) => {
+const streamFile = async (output, res, filename, contentType) => {
   const fileStat = await stat(output);
   res.writeHead(200, {
-    'content-type': 'video/mp4',
+    'content-type': contentType,
     'content-length': fileStat.size,
     'content-disposition': `attachment; filename="${filename}"`,
   });
   createReadStream(output).pipe(res);
+};
+
+const streamVideo = (output, res, filename) =>
+  streamFile(output, res, filename, 'video/mp4');
+
+const cleanupGenerated = async (files) => {
+  await Promise.all((files || []).map((file) => unlink(file).catch(() => {})));
+};
+
+const buildNarratedProps = async (props, jobId) => {
+  const prepared = await prepareNarratedScenes({
+    scenes: props.scenes,
+    outputDir: generatedAudioDir,
+    publicPrefix: 'generated',
+    fps: 30,
+    paddingFrames: 12,
+    jobId,
+  });
+
+  return {
+    ...prepared,
+    props: {
+      ...props,
+      scenes: prepared.scenes,
+    },
+  };
 };
 
 const isAuthorized = (req) => {
@@ -113,13 +152,30 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if ((req.url === '/demo.mp4' || req.url?.startsWith('/demo.mp4?')) && req.method === 'GET') {
+  if (
+    (req.url === '/demo.mp4' || req.url?.startsWith('/demo.mp4?')) &&
+    req.method === 'GET'
+  ) {
     try {
       const output = path.join(outDir, 'demo.mp4');
       await streamVideo(output, res, 'demo.mp4');
-    } catch (error) {
+    } catch {
       res.writeHead(404, {'content-type': 'application/json'});
       res.end(JSON.stringify({ok: false, error: 'Demo video not available'}));
+    }
+    return;
+  }
+
+  if (
+    (req.url === '/demo-tts.mp4' || req.url?.startsWith('/demo-tts.mp4?')) &&
+    req.method === 'GET'
+  ) {
+    try {
+      const output = path.join(outDir, 'demo-tts.mp4');
+      await streamVideo(output, res, 'demo-tts.mp4');
+    } catch {
+      res.writeHead(404, {'content-type': 'application/json'});
+      res.end(JSON.stringify({ok: false, error: 'TTS demo video not available'}));
     }
     return;
   }
@@ -127,6 +183,98 @@ const server = http.createServer(async (req, res) => {
   if (!isAuthorized(req)) {
     res.writeHead(401, {'content-type': 'application/json'});
     res.end(JSON.stringify({ok: false, error: 'Unauthorized'}));
+    return;
+  }
+
+  if (req.url === '/tts-status' && req.method === 'GET') {
+    const config = getTtsConfig();
+    res.writeHead(200, {'content-type': 'application/json; charset=utf-8'});
+    res.end(JSON.stringify({ok: true, ...config}, null, 2));
+    return;
+  }
+
+  if (req.url === '/tts-preview' && req.method === 'POST') {
+    let output = null;
+    try {
+      const body = await readJsonBody(req);
+      output = path.join(outDir, `tts-preview-${Date.now()}.wav`);
+      const result = await synthesizeNarration({
+        text: body.text,
+        outputPath: output,
+        fps: 30,
+      });
+
+      res.setHeader('x-tts-voice', result.voice);
+      res.setHeader('x-tts-speed', String(result.speed));
+      res.on('finish', () => {
+        unlink(output).catch(() => {});
+      });
+      await streamFile(output, res, 'tts-preview.wav', 'audio/wav');
+    } catch (error) {
+      if (output) await unlink(output).catch(() => {});
+      console.error('TTS preview failed:', error);
+      res.writeHead(400, {'content-type': 'application/json'});
+      res.end(JSON.stringify({ok: false, error: String(error)}));
+    }
+    return;
+  }
+
+  if (req.url === '/render-tts-demo' && req.method === 'POST') {
+    let generatedFiles = [];
+    try {
+      const demo = JSON.parse(
+        await readFile(path.join(cwd, 'demo-props.json'), 'utf8'),
+      );
+      const props = validateProps(demo);
+      const prepared = await buildNarratedProps(
+        props,
+        `demo-${Date.now()}`,
+      );
+      generatedFiles = prepared.generatedFiles;
+
+      const output = await renderVideo(
+        'TestVideo',
+        'demo-tts.mp4',
+        prepared.props,
+      );
+
+      await cleanupGenerated(generatedFiles);
+      generatedFiles = [];
+      await streamVideo(output, res, 'demo-tts.mp4');
+    } catch (error) {
+      await cleanupGenerated(generatedFiles);
+      console.error('TTS demo render failed:', error);
+      res.writeHead(400, {'content-type': 'application/json'});
+      res.end(JSON.stringify({ok: false, error: String(error)}));
+    }
+    return;
+  }
+
+  if (req.url === '/render-tts' && req.method === 'POST') {
+    let generatedFiles = [];
+    try {
+      const props = validateProps(await readJsonBody(req));
+      const prepared = await buildNarratedProps(
+        props,
+        `runtime-${Date.now()}`,
+      );
+      generatedFiles = prepared.generatedFiles;
+
+      const output = await renderVideo(
+        'TestVideo',
+        'tts-video.mp4',
+        prepared.props,
+      );
+
+      await cleanupGenerated(generatedFiles);
+      generatedFiles = [];
+      await streamVideo(output, res, 'tts-video.mp4');
+    } catch (error) {
+      await cleanupGenerated(generatedFiles);
+      console.error('TTS render failed:', error);
+      res.writeHead(400, {'content-type': 'application/json'});
+      res.end(JSON.stringify({ok: false, error: String(error)}));
+    }
     return;
   }
 
@@ -150,7 +298,17 @@ const server = http.createServer(async (req, res) => {
       const doc = await readGoogleDocText(body.documentId);
       const result = await planScenes(doc.script);
       res.writeHead(200, {'content-type': 'application/json; charset=utf-8'});
-      res.end(JSON.stringify({ok: true, document: {id: doc.documentId, title: doc.title}, ...result}, null, 2));
+      res.end(
+        JSON.stringify(
+          {
+            ok: true,
+            document: {id: doc.documentId, title: doc.title},
+            ...result,
+          },
+          null,
+          2,
+        ),
+      );
     } catch (error) {
       console.error('Drive scene planning failed:', error);
       res.writeHead(400, {'content-type': 'application/json'});
@@ -164,7 +322,11 @@ const server = http.createServer(async (req, res) => {
       const body = await readJsonBody(req);
       const doc = await readGoogleDocText(body.documentId);
       const result = await planScenes(doc.script);
-      const output = await renderVideo('TestVideo', 'drive-script-test.mp4', result.props);
+      const output = await renderVideo(
+        'TestVideo',
+        'drive-script-test.mp4',
+        result.props,
+      );
       await streamVideo(output, res, 'drive-script-test.mp4');
     } catch (error) {
       console.error('Drive script render failed:', error);
@@ -192,7 +354,11 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await readJsonBody(req);
       const result = await planScenes(body.script);
-      const output = await renderVideo('TestVideo', 'script-test.mp4', result.props);
+      const output = await renderVideo(
+        'TestVideo',
+        'script-test.mp4',
+        result.props,
+      );
       await streamVideo(output, res, 'script-test.mp4');
     } catch (error) {
       console.error('Script render failed:', error);
@@ -205,7 +371,11 @@ const server = http.createServer(async (req, res) => {
   if (req.url === '/render-json' && req.method === 'POST') {
     try {
       const props = validateProps(await readJsonBody(req));
-      const output = await renderVideo('TestVideo', 'dynamic-test.mp4', props);
+      const output = await renderVideo(
+        'TestVideo',
+        'dynamic-test.mp4',
+        props,
+      );
       await streamVideo(output, res, 'dynamic-test.mp4');
     } catch (error) {
       console.error('Dynamic render failed:', error);

@@ -121,7 +121,11 @@ export const buildMouthCuesFromWav = (buffer, fps = 30) => {
     let sumSquares = 0;
     let count = 0;
 
-    for (let sampleFrame = startSampleFrame; sampleFrame < endSampleFrame; sampleFrame += 2) {
+    for (
+      let sampleFrame = startSampleFrame;
+      sampleFrame < endSampleFrame;
+      sampleFrame += 2
+    ) {
       for (let channel = 0; channel < wav.channels; channel++) {
         const byteOffset =
           wav.dataStart +
@@ -149,7 +153,6 @@ export const buildMouthCuesFromWav = (buffer, fps = 30) => {
     return 2;
   });
 
-  // Reduce one-frame chatter without making the mouth feel sluggish.
   for (let i = 1; i < mouthCues.length - 1; i++) {
     if (
       mouthCues[i] === 0 &&
@@ -209,5 +212,77 @@ export const synthesizeNarration = async ({
     voice: config.voice,
     speed: config.speed,
     ...analysis,
+  };
+};
+
+export const prepareNarratedScenes = async ({
+  scenes,
+  outputDir,
+  publicPrefix = 'generated',
+  fps = 30,
+  paddingFrames = 12,
+  jobId = String(Date.now()),
+}) => {
+  if (!Array.isArray(scenes) || scenes.length === 0) {
+    throw new Error('scenes must be a non-empty array');
+  }
+
+  await mkdir(outputDir, {recursive: true});
+
+  const prepared = [];
+  const generatedFiles = [];
+  const metrics = [];
+  let cursor = 0;
+
+  for (let index = 0; index < scenes.length; index++) {
+    const scene = scenes[index];
+    const narration =
+      typeof scene.narration === 'string' && scene.narration.trim()
+        ? scene.narration
+        : scene.body;
+
+    const filename = `tts-${jobId}-${index}.wav`;
+    const outputPath = path.join(outputDir, filename);
+    const result = await synthesizeNarration({
+      text: narration,
+      outputPath,
+      fps,
+    });
+
+    const minimumDuration =
+      Math.ceil(result.durationSeconds * fps) + paddingFrames;
+    const requestedDuration =
+      typeof scene.duration === 'number' && scene.duration > 0
+        ? Math.ceil(scene.duration)
+        : 0;
+    const duration = Math.max(1, requestedDuration, minimumDuration);
+
+    prepared.push({
+      ...scene,
+      from: cursor,
+      duration,
+      narration,
+      audioSrc: `${publicPrefix}/${filename}`,
+      mouthCues: result.mouthCues,
+    });
+
+    metrics.push({
+      index,
+      durationSeconds: result.durationSeconds,
+      durationFrames: duration,
+      bytes: result.bytes,
+      analysis: result.analysis,
+    });
+
+    generatedFiles.push(outputPath);
+    cursor += duration;
+  }
+
+  return {
+    scenes: prepared,
+    generatedFiles,
+    metrics,
+    totalFrames: cursor,
+    config: getTtsConfig(),
   };
 };
