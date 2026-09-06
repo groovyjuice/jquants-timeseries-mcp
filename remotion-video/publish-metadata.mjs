@@ -78,6 +78,39 @@ const xEstimatedLength = (body) => {
   return Array.from(text.replace(placeholder, 'x'.repeat(23))).length;
 };
 
+const normalizeSecurityCode = (plan) => {
+  const raw =
+    plan?.security_code ??
+    plan?.stock_code ??
+    plan?.ticker_code ??
+    plan?.code ??
+    null;
+
+  if (raw === null || raw === undefined) return null;
+
+  const text = String(raw).trim();
+  if (!text) return null;
+
+  // Japanese listed-equity codes are represented here as 4 digits.
+  // Do not synthesize codes for crypto, FX, commodities, indices, etc.
+  return /^\d{4}$/.test(text) ? text : null;
+};
+
+const ensureRequiredTags = ({tags, plan}) => {
+  const required = ['賢明なる投資家チャンネル'];
+  const securityCode = normalizeSecurityCode(plan);
+  if (securityCode) required.push(securityCode);
+
+  const merged = [
+    ...required,
+    ...(Array.isArray(tags) ? tags : []),
+  ]
+    .map((value) => String(value || '').trim().replace(/^#+/, ''))
+    .filter(Boolean);
+
+  return [...new Set(merged)].slice(0, 30);
+};
+
 const validate = (data) => {
   if (!Array.isArray(data.title_candidates) || data.title_candidates.length !== 10) {
     throw new Error('metadata must contain exactly 10 title candidates');
@@ -333,6 +366,9 @@ export const generatePublishMetadata = async ({plan, outputDir}) => {
       'It should explain what the video covers and the main investor viewpoints without spoiling every conclusion.',
       'Do not include the standard channel boilerplate in description_intro; the system appends it.',
       'tags must be 10-30 YouTube tags as plain terms without #. Include the company/topic, related investor terms, and important themes actually present in the video.',
+      'Always include 賢明なる投資家チャンネル as a tag.',
+      'If the supplied plan has a Japanese listed-equity security_code, include that 4-digit code as a tag.',
+      'Do not invent or add a stock code for Bitcoin, crypto, gold, silver, oil, FX, indices, or other non-equity themes.',
       'x_post_body is a concise Japanese announcement for X. Do not include a URL; the system appends [動画URL].',
       'Keep x_post_body short enough that adding a URL still fits within 140 characters. Aim for 100 Japanese characters or less.',
       'Do not use investment-recommendation language such as 絶対買い or 必ず上がる.',
@@ -349,6 +385,10 @@ export const generatePublishMetadata = async ({plan, outputDir}) => {
   });
 
   const generated = validate(JSON.parse(response.output_text));
+  generated.tags = ensureRequiredTags({
+    tags: generated.tags,
+    plan,
+  });
   const description = [
     generated.description_intro,
     '',
