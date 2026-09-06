@@ -73,7 +73,7 @@ const extractYoutubeResult = (payload) => {
   return null;
 };
 
-const normalizeResult = ({payload, youtube, requestId}) => {
+const normalizeResult = ({payload, youtube, requestId, metadata}) => {
   const videoId =
     youtube?.platform_post_id ||
     youtube?.video_id ||
@@ -99,6 +99,10 @@ const normalizeResult = ({payload, youtube, requestId}) => {
     draft_title:
       process.env.YOUTUBE_DRAFT_TITLE?.trim() ||
       '【下書き】タイトルを設定してください',
+    description_set: Boolean(String(metadata?.description || '').trim()),
+    tag_count: Array.isArray(metadata?.tags)
+      ? metadata.tags.filter((tag) => String(tag || '').trim()).length
+      : 0,
     raw_result: youtube || payload,
   };
 };
@@ -226,7 +230,12 @@ const upload = async ({videoPath, metadataPath}) => {
     }
   }
 
-  const result = normalizeResult({payload, youtube, requestId});
+  const result = normalizeResult({
+    payload,
+    youtube,
+    requestId,
+    metadata,
+  });
 
   if (!result.video_id && !result.youtube_url) {
     throw new Error(
