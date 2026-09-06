@@ -41,6 +41,13 @@ const validateProps = (props) => {
   }
 
   if (
+    props.tts_voice !== undefined &&
+    (typeof props.tts_voice !== 'string' || props.tts_voice.trim().length === 0)
+  ) {
+    throw new Error('tts_voice must be a non-empty string');
+  }
+
+  if (
     props.tts_speed !== undefined &&
     (typeof props.tts_speed !== 'number' ||
       !Number.isFinite(props.tts_speed) ||
@@ -139,6 +146,7 @@ const buildNarratedProps = async (props, jobId) => {
     paddingFrames: 12,
     jobId,
     ttsSpeed: props.tts_speed,
+    ttsVoice: props.tts_voice,
   });
 
   return {
