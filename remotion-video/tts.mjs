@@ -6,7 +6,7 @@ const DEFAULT_MODEL = 'gpt-4o-mini-tts';
 const DEFAULT_VOICE = 'marin';
 const DEFAULT_SPEED = 1.18;
 const DEFAULT_INSTRUCTIONS = [
-  'A woman in her twenties with a bright, cheerful, upbeat voice. Clean, polished, studio-quality narration with a clear broadcast-style sound.'
+  'A woman in her twenties with a bright, cheerful, upbeat voice. Clean, polished, studio-quality narration with a clear broadcast-style sound.',
   'Speak standard Japanese clearly and neutrally.',
   'Use a slightly bright, smooth vocal tone while keeping an intelligent, trustworthy financial-news style.',
   'Keep a brisk, comfortable pace that feels a little faster than normal conversation.',
