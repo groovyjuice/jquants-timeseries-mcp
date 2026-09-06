@@ -1,6 +1,11 @@
 # YouTube one-time setup
 
-This project uploads finished videos to YouTube as private drafts.
+The standard pipeline uploads finished videos to YouTube through Upload-Post as private drafts.
+
+Why Upload-Post is used:
+- New unverified YouTube Data API projects can have API-uploaded videos locked as private.
+- A locked-private API upload cannot simply be made public later in YouTube Studio.
+- The desired workflow is: upload privately, then manually set the final title, thumbnail, and publish status.
 
 Automatic fields:
 - Temporary title: `【下書き】タイトルを設定してください`
@@ -13,71 +18,44 @@ Manual fields/actions:
 - Thumbnail
 - Publish / schedule
 
-## 1. Create or select a Google Cloud project
+## 1. Create an Upload-Post account
 
-Open Google Cloud Console and create/select the project used only for this personal YouTube automation.
+Create an account at Upload-Post.
 
-Enable:
-- YouTube Data API v3
+Create one profile for 賢明なる投資家チャンネル and connect the target YouTube channel to that profile.
 
-## 2. Configure OAuth consent
+Record the profile username.
 
-Add the YouTube upload scope:
+## 2. Create an Upload-Post API key
 
-`https://www.googleapis.com/auth/youtube.upload`
+Generate an API key in the Upload-Post dashboard.
 
-For stable long-term automation, do not leave the OAuth app in Testing indefinitely.
-Testing-mode refresh tokens are time-limited.
+Keep it private.
 
-This is a personal-use automation, so the owner may proceed through Google's unverified-app warning where applicable.
+The pipeline needs exactly:
 
-## 3. Create OAuth credentials
-
-Create:
-- OAuth client ID
-- Application type: Desktop app
-
-Download the client JSON file.
-
-Do not commit the JSON file to GitHub.
-
-## 4. Obtain the refresh token
-
-From a local checkout of this repository:
-
-```bash
-cd remotion-video
-node youtube-oauth-local.mjs /path/to/client_secret.json
+```text
+UPLOAD_POST_API_KEY
+UPLOAD_POST_USER
 ```
 
-The script prints a Google authorization URL.
+`UPLOAD_POST_USER` is the Upload-Post profile username that has the YouTube channel connected.
 
-Open it, sign in to the Google account that owns the YouTube channel, approve the YouTube upload permission, then return to the terminal.
-
-The script prints:
-
-- YOUTUBE_CLIENT_ID
-- YOUTUBE_CLIENT_SECRET
-- YOUTUBE_REFRESH_TOKEN
-
-Keep these private.
-
-## 5. Add GitHub Actions secrets
+## 3. Add GitHub Actions secrets
 
 Repository:
 Settings -> Secrets and variables -> Actions -> New repository secret
 
-Create exactly these three secrets:
+Create:
 
 ```text
-YOUTUBE_CLIENT_ID
-YOUTUBE_CLIENT_SECRET
-YOUTUBE_REFRESH_TOKEN
+UPLOAD_POST_API_KEY
+UPLOAD_POST_USER
 ```
 
-Do not put these values in repository files, workflow YAML, issues, or chat logs.
+Do not put the API key in repository files, workflow YAML, issues, or chat logs.
 
-## 6. Pipeline behavior
+## 4. Pipeline behavior
 
 The generic workflow is:
 
@@ -85,11 +63,20 @@ The generic workflow is:
 
 At the end of a successful run it:
 1. Creates the final MP4
-2. Verifies size/loudness
-3. Uploads the MP4 to YouTube
-4. Sets description and tags
-5. Forces privacyStatus=private
-6. Leaves the thumbnail untouched
-7. Writes `youtube_upload.json` with the video ID and YouTube Studio edit URL
+2. Verifies size and loudness
+3. Uploads the MP4 to YouTube through Upload-Post
+4. Sets the generated description
+5. Sets the generated tags
+6. Uses the fixed temporary title
+7. Sets YouTube privacy to private
+8. Does not set a thumbnail
+9. Does not publish or schedule
+10. Writes `youtube_upload.json` with the YouTube video ID/URL where available
 
-The workflow fails instead of publishing if YouTube OAuth credentials are missing or upload verification fails.
+The workflow fails rather than silently succeeding if Upload-Post credentials are missing or the YouTube upload fails.
+
+## Legacy direct YouTube API path
+
+`youtube-upload.mjs` and `youtube-oauth-local.mjs` remain in the repository for future use if a YouTube API project is audited/verified.
+
+They are not the standard production path.
