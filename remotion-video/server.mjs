@@ -7,6 +7,7 @@ import path from 'node:path';
 import {planScenes} from './planner.mjs';
 import {readGoogleDocText} from './drive.mjs';
 import {prepareDriveProject, prepareLocalProject} from './project.mjs';
+import {generatePublishMetadata} from './publish-metadata.mjs';
 import {
   getTtsConfig,
   prepareNarratedScenes,
@@ -416,6 +417,7 @@ const createRenderPackage = async ({
   projectDir,
   prepared,
   jobId,
+  publishDir,
 }) => {
   const stageDir = path.join(outDir, 'render-package-stage');
   const packagePath = path.join(outDir, 'render-package.tar.gz');
@@ -445,6 +447,12 @@ const createRenderPackage = async ({
         path.basename(audioPath),
       ),
     );
+  }
+
+  if (publishDir) {
+    await cp(publishDir, path.join(stageDir, 'publish'), {
+      recursive: true,
+    });
   }
 
   await execFileAsync(
@@ -531,19 +539,28 @@ const autoRenderConfiguredProject = async () => {
     }
 
     console.log(
-      `Auto project render: loaded ${project.props.scenes.length} slides; starting TTS`,
+      `Auto project render: loaded ${project.props.scenes.length} slides; starting TTS and publish metadata`,
     );
     const props = validateProps(project.props);
-    const prepared = await buildNarratedProps(props, jobId);
+    const publishDir = path.join(projectDir, 'publish');
+
+    const [prepared, publishMetadata] = await Promise.all([
+      buildNarratedProps(props, jobId),
+      generatePublishMetadata({
+        plan: project.plan,
+        outputDir: publishDir,
+      }),
+    ]);
     generatedAudioFiles = prepared.generatedFiles;
 
     console.log(
-      `Auto project render: TTS complete, totalFrames=${prepared.totalFrames}; creating render package`,
+      `Auto project render: TTS complete, totalFrames=${prepared.totalFrames}; publish metadata titles=${publishMetadata.title_candidates.length}; creating render package`,
     );
     await createRenderPackage({
       projectDir,
       prepared,
       jobId,
+      publishDir,
     });
 
     if (process.env.AUTO_RENDER_PACKAGE_ONLY === '1') {
