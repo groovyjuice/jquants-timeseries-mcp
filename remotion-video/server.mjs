@@ -2,7 +2,7 @@ import http from 'node:http';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {createReadStream} from 'node:fs';
-import {stat, mkdir, writeFile, readFile, unlink, rm} from 'node:fs/promises';
+import {stat, mkdir, writeFile, readFile, unlink, rm, cp} from 'node:fs/promises';
 import path from 'node:path';
 import {planScenes} from './planner.mjs';
 import {readGoogleDocText} from './drive.mjs';
@@ -411,6 +411,63 @@ const buildNarratedProps = async (props, jobId) => {
 };
 
 
+
+const createRenderPackage = async ({
+  projectDir,
+  prepared,
+  jobId,
+}) => {
+  const stageDir = path.join(outDir, 'render-package-stage');
+  const packagePath = path.join(outDir, 'render-package.tar.gz');
+
+  await rm(stageDir, {recursive: true, force: true}).catch(() => {});
+  await mkdir(path.join(stageDir, 'public', 'generated'), {recursive: true});
+
+  await writeFile(
+    path.join(stageDir, 'props.json'),
+    JSON.stringify(prepared.props),
+    'utf8',
+  );
+
+  await cp(
+    projectDir,
+    path.join(stageDir, 'public', 'generated', jobId),
+    {recursive: true},
+  );
+
+  for (const audioPath of prepared.generatedFiles || []) {
+    await cp(
+      audioPath,
+      path.join(
+        stageDir,
+        'public',
+        'generated',
+        path.basename(audioPath),
+      ),
+    );
+  }
+
+  await execFileAsync(
+    'tar',
+    ['-czf', packagePath, '-C', stageDir, '.'],
+    {
+      cwd,
+      env: childEnv,
+      maxBuffer: 10 * 1024 * 1024,
+    },
+  );
+
+  await rm(stageDir, {recursive: true, force: true}).catch(() => {});
+  const packageStat = await stat(packagePath);
+  console.log(
+    'AUTO RENDER PACKAGE READY: ' +
+      packagePath +
+      ' bytes=' +
+      packageStat.size,
+  );
+  return packagePath;
+};
+
 const autoRenderConfiguredProject = async () => {
   if (process.env.AUTO_RENDER_DRIVE_PROJECT !== '1') return;
 
@@ -481,8 +538,20 @@ const autoRenderConfiguredProject = async () => {
     generatedAudioFiles = prepared.generatedFiles;
 
     console.log(
-      `Auto project render: TTS complete, totalFrames=${prepared.totalFrames}; rendering video in segments`,
+      `Auto project render: TTS complete, totalFrames=${prepared.totalFrames}; creating render package`,
     );
+    await createRenderPackage({
+      projectDir,
+      prepared,
+      jobId,
+    });
+
+    if (process.env.AUTO_RENDER_PACKAGE_ONLY === '1') {
+      console.log('Auto project render: package-only mode complete');
+      return;
+    }
+
+    console.log('Auto project render: rendering video in segments');
     await renderSegmentedVideo({
       outputFilename,
       prepared,
@@ -540,6 +609,28 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+
+  if (
+    (req.url === '/render-package.tar.gz' ||
+      req.url?.startsWith('/render-package.tar.gz?')) &&
+    req.method === 'GET'
+  ) {
+    try {
+      const output = path.join(outDir, 'render-package.tar.gz');
+      await streamFile(
+        output,
+        res,
+        'render-package.tar.gz',
+        'application/gzip',
+      );
+    } catch {
+      res.writeHead(404, {'content-type': 'application/json'});
+      res.end(
+        JSON.stringify({ok: false, error: 'Render package not available'}),
+      );
+    }
+    return;
+  }
 
   if (
     (req.url === '/project-output.mp4' ||
