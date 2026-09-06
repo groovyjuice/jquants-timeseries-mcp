@@ -356,7 +356,39 @@ const SlideArea: React.FC<{scene: Scene}> = ({scene}) => {
           opacity,
         }}
       >
-        {scene.slideSrc ? (
+        {scene.slideSpriteSrc ? (
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              overflow: 'hidden',
+              backgroundColor: '#ffffff',
+            }}
+          >
+            {(() => {
+              const columns = Math.max(1, scene.slideSpriteColumns ?? 4);
+              const rows = Math.max(1, scene.slideSpriteRows ?? 12);
+              const index = Math.max(0, scene.slideSpriteIndex ?? 0);
+              const col = index % columns;
+              const row = Math.floor(index / columns);
+              return (
+                <Img
+                  src={assetSrc(scene.slideSpriteSrc)}
+                  style={{
+                    position: 'absolute',
+                    width: `${columns * 100}%`,
+                    height: `${rows * 100}%`,
+                    left: `-${col * 100}%`,
+                    top: `-${row * 100}%`,
+                    objectFit: 'fill',
+                    maxWidth: 'none',
+                    maxHeight: 'none',
+                  }}
+                />
+              );
+            })()}
+          </div>
+        ) : scene.slideSrc ? (
           <Img
             src={assetSrc(scene.slideSrc)}
             style={{

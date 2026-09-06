@@ -6,7 +6,7 @@ import {stat, mkdir, writeFile, readFile, unlink, rm, cp} from 'node:fs/promises
 import path from 'node:path';
 import {planScenes} from './planner.mjs';
 import {readGoogleDocText} from './drive.mjs';
-import {prepareDriveProject, prepareLocalProject} from './project.mjs';
+import {prepareDriveProject, prepareLocalProject, prepareSpriteProject} from './project.mjs';
 import {generatePublishMetadata, applyChaptersToPublishMetadata} from './publish-metadata.mjs';
 import {
   getTtsConfig,
@@ -482,10 +482,14 @@ const autoRenderConfiguredProject = async () => {
   const videoPlanFileId = process.env.AUTO_PROJECT_VIDEO_PLAN_FILE_ID;
   const slidesFolderId = process.env.AUTO_PROJECT_SLIDES_FOLDER_ID;
   const endingSlideFileId = process.env.AUTO_PROJECT_ENDING_SLIDE_FILE_ID;
+  const spritePlanFileId = process.env.AUTO_PROJECT_SPRITE_PLAN_FILE_ID;
   const outputFilename =
     process.env.AUTO_PROJECT_OUTPUT_FILENAME || 'project-output.mp4';
 
-  if (!videoPlanFileId || !slidesFolderId || !endingSlideFileId) {
+  if (
+    !endingSlideFileId ||
+    (!spritePlanFileId && (!videoPlanFileId || !slidesFolderId))
+  ) {
     console.error(
       'Auto project render skipped: Drive project environment variables are incomplete',
     );
@@ -512,7 +516,15 @@ const autoRenderConfiguredProject = async () => {
     const bundlePath = path.join(cwd, 'project-bundle.tar.gz');
     let project;
 
-    if (process.env.AUTO_RENDER_USE_BUNDLED_PROJECT === '1') {
+    if (spritePlanFileId) {
+      console.log('Auto project render: loading sprite project and embedded plan from Drive');
+      project = await prepareSpriteProject({
+        spritePlanFileId,
+        endingSlideFileId,
+        outputDir: projectDir,
+        publicPrefix,
+      });
+    } else if (process.env.AUTO_RENDER_USE_BUNDLED_PROJECT === '1') {
       console.log('Auto project render: using explicitly enabled bundled project assets');
       await mkdir(projectDir, {recursive: true});
       await stat(bundlePath);

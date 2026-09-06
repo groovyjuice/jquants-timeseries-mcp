@@ -17,6 +17,10 @@ export type Scene = {
   mouthCues?: MouthState[];
   subtitleCues?: SubtitleCue[];
   slideSrc?: string;
+  slideSpriteSrc?: string;
+  slideSpriteIndex?: number;
+  slideSpriteColumns?: number;
+  slideSpriteRows?: number;
 };
 
 export const scenes: Scene[] = [

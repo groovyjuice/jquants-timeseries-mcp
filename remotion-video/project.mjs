@@ -114,6 +114,110 @@ export const prepareDriveProject = async ({
 };
 
 
+const SPRITE_PLAN_MARKER = Buffer.from('\n---TERRADONE_PLAN_JSON---\n', 'utf8');
+
+export const prepareSpriteProject = async ({
+  spritePlanFileId,
+  endingSlideFileId,
+  outputDir,
+  publicPrefix,
+  columns = 4,
+}) => {
+  if (!spritePlanFileId || !endingSlideFileId || !outputDir || !publicPrefix) {
+    throw new Error(
+      'spritePlanFileId, endingSlideFileId, outputDir, and publicPrefix are required',
+    );
+  }
+
+  const spriteFilename = 'terradone_sprite_plan.jpg';
+  const spritePath = path.join(outputDir, spriteFilename);
+  await downloadDriveFile({fileId: spritePlanFileId, outputPath: spritePath});
+
+  const spriteBuffer = await readFile(spritePath);
+  const markerIndex = spriteBuffer.lastIndexOf(SPRITE_PLAN_MARKER);
+  if (markerIndex < 0) {
+    throw new Error('Embedded video plan marker not found in sprite file');
+  }
+
+  const planText = spriteBuffer
+    .subarray(markerIndex + SPRITE_PLAN_MARKER.length)
+    .toString('utf8');
+  const plan = JSON.parse(planText);
+
+  if (!Array.isArray(plan.slides) || plan.slides.length === 0) {
+    throw new Error('embedded video plan must contain a non-empty slides array');
+  }
+
+  const generatedSlideCount = plan.slides.filter((slide) => !slide.fixed_asset).length;
+  const rows = Math.ceil(generatedSlideCount / columns);
+
+  const endingFilename = 'ending_slide.png';
+  const endingPath = path.join(outputDir, endingFilename);
+  await downloadDriveFile({fileId: endingSlideFileId, outputPath: endingPath});
+
+  let spriteIndex = 0;
+  const scenes = plan.slides.map((slide) => {
+    const base = {
+      from: 0,
+      duration: 1,
+      title: asString(
+        slide.display_title,
+        asString(slide.headline, asString(slide.section, '')),
+      ),
+      body: asString(
+        slide.subtitle,
+        asString(slide.subheadline, asString(slide.slide_text, '')),
+      ),
+      narration: asString(slide.narration, asString(slide.source_text, '')),
+      emotion: validEmotions.has(slide.emotion) ? slide.emotion : 'normal',
+    };
+
+    if (slide.fixed_asset) {
+      return {
+        ...base,
+        slideSrc: `${publicPrefix}/${endingFilename}`,
+      };
+    }
+
+    const currentIndex = spriteIndex++;
+    return {
+      ...base,
+      slideSpriteSrc: `${publicPrefix}/${spriteFilename}`,
+      slideSpriteIndex: currentIndex,
+      slideSpriteColumns: columns,
+      slideSpriteRows: rows,
+    };
+  });
+
+  return {
+    plan,
+    generatedFiles: [spritePath, endingPath],
+    props: {
+      scenes,
+      tts_voice: asString(plan.tts_voice, 'marin'),
+      tts_speed:
+        typeof plan.tts_speed === 'number' && Number.isFinite(plan.tts_speed)
+          ? plan.tts_speed
+          : 1.18,
+      bgmAsset: asString(plan.bgm_asset, 'common/bgm/main_bgm.mp3'),
+      bgmLoop: plan.bgm_loop !== false,
+      bgmVolume:
+        typeof plan.bgm_volume === 'number' && Number.isFinite(plan.bgm_volume)
+          ? plan.bgm_volume
+          : 0.025,
+      bgmFadeInFrames:
+        typeof plan.bgm_fade_in_frames === 'number'
+          ? plan.bgm_fade_in_frames
+          : 30,
+      bgmFadeOutFrames:
+        typeof plan.bgm_fade_out_frames === 'number'
+          ? plan.bgm_fade_out_frames
+          : 45,
+    },
+  };
+};
+
+
 export const prepareLocalProject = async ({
   projectDir,
   publicPrefix,
