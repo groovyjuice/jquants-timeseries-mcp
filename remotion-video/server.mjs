@@ -2,10 +2,11 @@ import http from 'node:http';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {createReadStream} from 'node:fs';
-import {stat, mkdir, writeFile, readFile, unlink} from 'node:fs/promises';
+import {stat, mkdir, writeFile, readFile, unlink, rm} from 'node:fs/promises';
 import path from 'node:path';
 import {planScenes} from './planner.mjs';
 import {readGoogleDocText} from './drive.mjs';
+import {prepareDriveProject} from './project.mjs';
 import {
   getTtsConfig,
   prepareNarratedScenes,
@@ -291,6 +292,62 @@ const server = http.createServer(async (req, res) => {
     } catch (error) {
       await cleanupGenerated(generatedFiles);
       console.error('TTS render failed:', error);
+      res.writeHead(400, {'content-type': 'application/json'});
+      res.end(JSON.stringify({ok: false, error: String(error)}));
+    }
+    return;
+  }
+
+
+  if (req.url === '/render-project-drive' && req.method === 'POST') {
+    let generatedFiles = [];
+    let projectDir = null;
+    let generatedAudioFiles = [];
+
+    try {
+      const body = await readJsonBody(req);
+      const jobId = `project-${Date.now()}`;
+      projectDir = path.join(generatedAudioDir, jobId);
+      const publicPrefix = `generated/${jobId}`;
+
+      const project = await prepareDriveProject({
+        videoPlanFileId: body.videoPlanFileId,
+        slidesFolderId: body.slidesFolderId,
+        endingSlideFileId: body.endingSlideFileId,
+        outputDir: projectDir,
+        publicPrefix,
+      });
+      generatedFiles = project.generatedFiles;
+
+      const props = validateProps(project.props);
+      const prepared = await buildNarratedProps(props, jobId);
+      generatedAudioFiles = prepared.generatedFiles;
+
+      const filename =
+        typeof body.outputFilename === 'string' && body.outputFilename.trim()
+          ? body.outputFilename.trim()
+          : 'project-video.mp4';
+
+      const output = await renderVideo(
+        'TestVideo',
+        filename,
+        prepared.props,
+      );
+
+      await cleanupGenerated(generatedAudioFiles);
+      generatedAudioFiles = [];
+      await rm(projectDir, {recursive: true, force: true}).catch(() => {});
+      projectDir = null;
+
+      await streamVideo(output, res, filename);
+    } catch (error) {
+      await cleanupGenerated(generatedAudioFiles);
+      if (projectDir) {
+        await rm(projectDir, {recursive: true, force: true}).catch(() => {});
+      } else {
+        await cleanupGenerated(generatedFiles);
+      }
+      console.error('Drive project render failed:', error);
       res.writeHead(400, {'content-type': 'application/json'});
       res.end(JSON.stringify({ok: false, error: String(error)}));
     }
