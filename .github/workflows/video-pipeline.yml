@@ -11,6 +11,9 @@ on:
         description: "Parallel render segment count"
         required: false
         default: "12"
+  push:
+    paths:
+      - ".github/video-pipeline-trigger.txt"
 
 jobs:
   prepare:
