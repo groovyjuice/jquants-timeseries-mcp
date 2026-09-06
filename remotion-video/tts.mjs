@@ -23,6 +23,15 @@ const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 const PRONUNCIATION_REPLACEMENTS = [
   ['終値', 'おわりね'],
   ['くら寿司', 'くらずし'],
+  ['Terra Drone', 'テラドローン'],
+  ['Terra B1', 'テラ ビーワン'],
+  ['Terra A1', 'テラ エーワン'],
+  ['Terra A2', 'テラ エーツー'],
+  ['C-UAS', 'シーユーエーエス'],
+  ['UTM', 'ユーティーエム'],
+  ['DEFTECH', 'デフテック'],
+  ['Shahed-238', 'シャヘド にーさんはち'],
+  ['Geran-3', 'ゲラン スリー'],
 ];
 
 export const normalizeTtsText = (text) => {

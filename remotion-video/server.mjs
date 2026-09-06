@@ -6,7 +6,7 @@ import {stat, mkdir, writeFile, readFile, unlink, rm, cp} from 'node:fs/promises
 import path from 'node:path';
 import {planScenes} from './planner.mjs';
 import {readGoogleDocText} from './drive.mjs';
-import {prepareDriveProject, prepareLocalProject, prepareSpriteProject} from './project.mjs';
+import {prepareDriveProject, prepareLocalProject, prepareSpriteProject, prepareEmbeddedSpriteProject} from './project.mjs';
 import {generatePublishMetadata, applyChaptersToPublishMetadata} from './publish-metadata.mjs';
 import {
   getTtsConfig,
@@ -35,6 +35,25 @@ const readJsonBody = async (req) => {
   }
   if (!raw) return {};
   return JSON.parse(raw);
+};
+
+
+const readRawBody = async (req, maxBytes = 6 * 1024 * 1024) => {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > maxBytes) {
+      throw new Error('Request body too large');
+    }
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+};
+
+const isProjectIngestAuthorized = (req) => {
+  const expected = process.env.PROJECT_INGEST_TOKEN;
+  return Boolean(expected) && req.headers.authorization === `Bearer ${expected}`;
 };
 
 const validateProps = (props) => {
@@ -682,6 +701,81 @@ const server = http.createServer(async (req, res) => {
     } catch {
       res.writeHead(404, {'content-type': 'application/json'});
       res.end(JSON.stringify({ok: false, error: 'Project video not available'}));
+    }
+    return;
+  }
+
+
+  if (req.url === '/prepare-project-upload' && req.method === 'POST') {
+    if (!isProjectIngestAuthorized(req)) {
+      res.writeHead(401, {'content-type': 'application/json'});
+      res.end(JSON.stringify({ok: false, error: 'Unauthorized'}));
+      return;
+    }
+
+    let projectDir = null;
+    let generatedAudioFiles = [];
+    try {
+      const body = await readRawBody(req);
+      if (!body.length) throw new Error('Uploaded sprite is empty');
+
+      const jobId = `upload-project-${Date.now()}`;
+      projectDir = path.join(generatedAudioDir, jobId);
+      await mkdir(projectDir, {recursive: true});
+      const spritePath = path.join(projectDir, 'project_sprite.webp');
+      await writeFile(spritePath, body);
+
+      const project = await prepareEmbeddedSpriteProject({
+        spritePath,
+        publicPrefix: `generated/${jobId}`,
+      });
+      const props = validateProps(project.props);
+      const publishDir = path.join(projectDir, 'publish');
+
+      const [prepared, publishMetadata] = await Promise.all([
+        buildNarratedProps(props, jobId),
+        generatePublishMetadata({
+          plan: project.plan,
+          outputDir: publishDir,
+        }),
+      ]);
+      generatedAudioFiles = prepared.generatedFiles;
+
+      const finalizedPublishMetadata =
+        await applyChaptersToPublishMetadata({
+          metadata: publishMetadata,
+          plan: project.plan,
+          scenes: prepared.scenes,
+          fps: 30,
+          totalFrames: prepared.totalFrames,
+          outputDir: publishDir,
+        });
+
+      await createRenderPackage({
+        projectDir,
+        prepared,
+        jobId,
+        publishDir,
+      });
+
+      res.writeHead(200, {'content-type': 'application/json; charset=utf-8'});
+      res.end(JSON.stringify({
+        ok: true,
+        scenes: prepared.scenes.length,
+        totalFrames: prepared.totalFrames,
+        durationSeconds: prepared.totalFrames / 30,
+        titleCandidates: finalizedPublishMetadata.title_candidates.length,
+        chapters: finalizedPublishMetadata.chapters.length,
+      }));
+    } catch (error) {
+      console.error('Uploaded project preparation failed:', error);
+      res.writeHead(400, {'content-type': 'application/json'});
+      res.end(JSON.stringify({ok: false, error: String(error)}));
+    } finally {
+      await cleanupGenerated(generatedAudioFiles);
+      if (projectDir) {
+        await rm(projectDir, {recursive: true, force: true}).catch(() => {});
+      }
     }
     return;
   }

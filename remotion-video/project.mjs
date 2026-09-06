@@ -218,6 +218,82 @@ export const prepareSpriteProject = async ({
 };
 
 
+export const prepareEmbeddedSpriteProject = async ({
+  spritePath,
+  publicPrefix,
+  columns = 4,
+}) => {
+  if (!spritePath || !publicPrefix) {
+    throw new Error('spritePath and publicPrefix are required');
+  }
+
+  const spriteBuffer = await readFile(spritePath);
+  const markerIndex = spriteBuffer.lastIndexOf(SPRITE_PLAN_MARKER);
+  if (markerIndex < 0) {
+    throw new Error('Embedded video plan marker not found in uploaded sprite');
+  }
+
+  const plan = JSON.parse(
+    spriteBuffer
+      .subarray(markerIndex + SPRITE_PLAN_MARKER.length)
+      .toString('utf8'),
+  );
+
+  if (!Array.isArray(plan.slides) || plan.slides.length === 0) {
+    throw new Error('embedded video plan must contain a non-empty slides array');
+  }
+
+  const rows = Math.ceil(plan.slides.length / columns);
+  const spriteFilename = path.basename(spritePath);
+
+  const scenes = plan.slides.map((slide, index) => ({
+    from: 0,
+    duration: 1,
+    title: asString(
+      slide.display_title,
+      asString(slide.headline, asString(slide.section, '')),
+    ),
+    body: asString(
+      slide.subtitle,
+      asString(slide.subheadline, asString(slide.slide_text, '')),
+    ),
+    narration: asString(slide.narration, asString(slide.source_text, '')),
+    emotion: validEmotions.has(slide.emotion) ? slide.emotion : 'normal',
+    slideSpriteSrc: `${publicPrefix}/${spriteFilename}`,
+    slideSpriteIndex: index,
+    slideSpriteColumns: columns,
+    slideSpriteRows: rows,
+  }));
+
+  return {
+    plan,
+    generatedFiles: [spritePath],
+    props: {
+      scenes,
+      tts_voice: asString(plan.tts_voice, 'marin'),
+      tts_speed:
+        typeof plan.tts_speed === 'number' && Number.isFinite(plan.tts_speed)
+          ? plan.tts_speed
+          : 1.18,
+      bgmAsset: asString(plan.bgm_asset, 'common/bgm/main_bgm.mp3'),
+      bgmLoop: plan.bgm_loop !== false,
+      bgmVolume:
+        typeof plan.bgm_volume === 'number' && Number.isFinite(plan.bgm_volume)
+          ? plan.bgm_volume
+          : 0.025,
+      bgmFadeInFrames:
+        typeof plan.bgm_fade_in_frames === 'number'
+          ? plan.bgm_fade_in_frames
+          : 30,
+      bgmFadeOutFrames:
+        typeof plan.bgm_fade_out_frames === 'number'
+          ? plan.bgm_fade_out_frames
+          : 45,
+    },
+  };
+};
+
+
 export const prepareLocalProject = async ({
   projectDir,
   publicPrefix,
