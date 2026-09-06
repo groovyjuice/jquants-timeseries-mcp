@@ -3,27 +3,27 @@ import {mkdir, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 
 const DEFAULT_MODEL = 'gpt-4o-mini-tts';
-const DEFAULT_VOICE = 'sage';
+const DEFAULT_VOICE = 'marin';
 const DEFAULT_SPEED = 1.18;
 const DEFAULT_INSTRUCTIONS = [
-  'Friendly, bright, warm, and natural.',
+  'Clean, polished, studio-quality narration with a clear broadcast-style sound.'
   'Speak standard Japanese clearly and neutrally.',
-  'Use a slightly brighter and lighter vocal tone while keeping an intelligent, trustworthy financial-news style.',
+  'Use a slightly bright, smooth vocal tone while keeping an intelligent, trustworthy financial-news style.'
   'Keep a brisk, comfortable pace that feels a little faster than normal conversation.',
   'Keep pronunciation precise, especially for company names, numbers, and financial terms.',
-  'Avoid exaggerated accents, slang, childish delivery, or theatrical acting.',
+  'Avoid breathiness, raspiness, muffled resonance, exaggerated accents, slang, childish delivery, or theatrical acting.'
   'Read the supplied text faithfully without adding commentary.',
 ].join(' ');
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
-export const getTtsConfig = ({speed} = {}) => {
+export const getTtsConfig = ({speed, voice} = {}) => {
   const requestedSpeed = speed ?? process.env.OPENAI_TTS_SPEED ?? DEFAULT_SPEED;
   const parsedSpeed = Number(requestedSpeed);
   return {
     configured: Boolean(process.env.OPENAI_API_KEY),
     model: process.env.OPENAI_TTS_MODEL || DEFAULT_MODEL,
-    voice: process.env.OPENAI_TTS_VOICE || DEFAULT_VOICE,
+    voice: voice || process.env.OPENAI_TTS_VOICE || DEFAULT_VOICE,
     speed: Number.isFinite(parsedSpeed) ? clamp(parsedSpeed, 0.25, 4) : DEFAULT_SPEED,
     instructions: process.env.OPENAI_TTS_INSTRUCTIONS || DEFAULT_INSTRUCTIONS,
     responseFormat: 'wav',
@@ -176,6 +176,7 @@ export const synthesizeNarration = async ({
   outputPath,
   fps = 30,
   speed,
+  voice,
 }) => {
   if (typeof text !== 'string' || text.trim().length === 0) {
     throw new Error('TTS text must be a non-empty string');
@@ -189,7 +190,7 @@ export const synthesizeNarration = async ({
     throw new Error('OPENAI_API_KEY is not configured');
   }
 
-  const config = getTtsConfig({speed});
+  const config = getTtsConfig({speed, voice});
   const client = new OpenAI({apiKey: process.env.OPENAI_API_KEY});
 
   const response = await client.audio.speech.create({
@@ -225,6 +226,7 @@ export const prepareNarratedScenes = async ({
   paddingFrames = 12,
   jobId = String(Date.now()),
   ttsSpeed,
+  ttsVoice,
 }) => {
   if (!Array.isArray(scenes) || scenes.length === 0) {
     throw new Error('scenes must be a non-empty array');
@@ -251,6 +253,7 @@ export const prepareNarratedScenes = async ({
       outputPath,
       fps,
       speed: ttsSpeed,
+      voice: ttsVoice,
     });
 
     const minimumDuration =
@@ -287,6 +290,6 @@ export const prepareNarratedScenes = async ({
     generatedFiles,
     metrics,
     totalFrames: cursor,
-    config: getTtsConfig({speed: ttsSpeed}),
+    config: getTtsConfig({speed: ttsSpeed, voice: ttsVoice}),
   };
 };
