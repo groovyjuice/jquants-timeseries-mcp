@@ -1,0 +1,140 @@
+name: Finalize and Upload Repair
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: "Source Video Pipeline run id"
+        required: true
+        default: "34028008997"
+  push:
+    paths:
+      - ".github/finalize-upload-repair-trigger.txt"
+
+jobs:
+  finalize-upload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      UPLOAD_POST_API_KEY: ${{ secrets.UPLOAD_POST_API_KEY }}
+      UPLOAD_POST_USER: ${{ secrets.UPLOAD_POST_USER }}
+      YOUTUBE_CATEGORY_ID: "25"
+      YOUTUBE_DRAFT_TITLE: "【下書き】タイトルを設定してください"
+    steps:
+      - name: Checkout current pipeline code
+        uses: actions/checkout@v4
+        with:
+          ref: remotion-prototype
+
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+
+      - name: Download rendered segments from source run
+        uses: actions/download-artifact@v4
+        with:
+          pattern: pipeline-segment-*
+          path: segments
+          merge-multiple: true
+          run-id: ${{ inputs.source_run_id || '34028008997' }}
+          github-token: ${{ github.token }}
+
+      - name: Download render package from source run
+        uses: actions/download-artifact@v4
+        with:
+          name: pipeline-render-package
+          path: package
+          run-id: ${{ inputs.source_run_id || '34028008997' }}
+          github-token: ${{ github.token }}
+
+      - name: Extract publish metadata
+        run: |
+          mkdir -p publish
+          tar -xzf package/render-package.tar.gz -C publish ./publish
+          mv publish/publish/* publish/
+          rmdir publish/publish
+
+      - name: Concatenate compressed segments
+        shell: bash
+        run: |
+          set -euo pipefail
+          COUNT=$(find segments -maxdepth 1 -name 'segment-*.mp4' | wc -l)
+          echo "segment_count=$COUNT"
+          test "$COUNT" -eq 12
+          : > concat.txt
+          for f in $(find segments -maxdepth 1 -name 'segment-*.mp4' | sort); do
+            ffprobe -v error "$f" >/dev/null
+            echo "file '$PWD/$f'" >> concat.txt
+          done
+          ffmpeg -y -f concat -safe 0 -i concat.txt -c copy narration-video.mp4
+
+      - name: Mix BGM and normalize loudness
+        shell: bash
+        run: |
+          set -euo pipefail
+          DURATION=$(ffprobe -v error -show_entries format=duration -of csv=p=0 narration-video.mp4)
+          FADE_OUT_START=$(awk -v d="$DURATION" 'BEGIN {x=d-1.5; if(x<0)x=0; printf "%.3f", x}')
+          BGM="remotion-video/public/common/bgm/main_bgm.mp3"
+
+          ffmpeg -y             -i narration-video.mp4             -stream_loop -1 -i "$BGM"             -filter_complex "[1:a]volume=0.025,afade=t=in:st=0:d=1,afade=t=out:st=${FADE_OUT_START}:d=1.5[bgm];[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=0[mix];[mix]loudnorm=I=-15:LRA=7:TP=-1[a]"             -map 0:v:0 -map "[a]"             -c:v copy -c:a aac -b:a 128k -shortest             -movflags +faststart             final_video.mp4
+
+      - name: Verify final media
+        shell: bash
+        run: |
+          set -euo pipefail
+          SIZE=$(stat -c%s final_video.mp4)
+          echo "bytes=$SIZE"
+          test "$SIZE" -lt 200000000
+          ffmpeg -hide_banner -i final_video.mp4             -af loudnorm=I=-15:LRA=7:TP=-1:print_format=json             -f null - 2> loudness.txt || true
+          python - <<'PY'
+          import json,re
+          t=open("loudness.txt",encoding="utf-8",errors="ignore").read()
+          m=re.findall(r'\{\s*"input_i".*?\}',t,re.S)
+          assert m,"no loudness block"
+          d=json.loads(m[-1])
+          i=float(d["input_i"]); tp=float(d["input_tp"])
+          print("integrated_lufs=",i)
+          print("true_peak_dbtp=",tp)
+          assert -16 <= i <= -14
+          assert tp <= -0.5
+          PY
+
+      - name: Require Upload-Post credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$UPLOAD_POST_API_KEY"
+          test -n "$UPLOAD_POST_USER"
+
+      - name: Upload private draft to YouTube
+        shell: bash
+        run: |
+          set -euo pipefail
+          node remotion-video/upload-post-youtube.mjs             final_video.mp4             publish/publish_metadata.json             publish/youtube_upload.json
+
+      - name: Verify YouTube draft result
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open("publish/youtube_upload.json",encoding="utf-8"))
+          assert d.get("video_id") or d.get("youtube_url"), d
+          assert d.get("privacy_status") == "private", d
+          assert d.get("description_set") is True, d
+          assert d.get("tag_count",0) > 0, d
+          print("video_id=",d.get("video_id"))
+          print("youtube_url=",d.get("youtube_url"))
+          print("studio_edit_url=",d.get("studio_edit_url"))
+          PY
+
+      - name: Upload repair delivery artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: youtube-draft-repair-delivery
+          path: |
+            final_video.mp4
+            publish/
+          retention-days: 7
+          compression-level: 0
