@@ -84,6 +84,13 @@ const splitSubtitle = (text: string, maxChars = 34) => {
 };
 
 const subtitleAtFrame = (scene: Scene, frame: number) => {
+  if (scene.subtitleCues?.length) {
+    const cue = scene.subtitleCues.find(
+      (item) => frame >= item.startFrame && frame < item.endFrame,
+    );
+    return cue?.text ?? '';
+  }
+
   const text = scene.narration ?? scene.body;
   const chunks = splitSubtitle(text);
   if (chunks.length <= 1) return chunks[0] ?? '';
