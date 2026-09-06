@@ -1,5 +1,11 @@
 export type MouthState = 0 | 1 | 2;
 
+export type SubtitleCue = {
+  startFrame: number;
+  endFrame: number;
+  text: string;
+};
+
 export type Scene = {
   from: number;
   duration: number;
@@ -9,6 +15,7 @@ export type Scene = {
   emotion: 'normal' | 'surprise' | 'serious' | 'smile';
   audioSrc?: string;
   mouthCues?: MouthState[];
+  subtitleCues?: SubtitleCue[];
   slideSrc?: string;
 };
 
