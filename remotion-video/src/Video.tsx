@@ -10,6 +10,7 @@ import {
   interpolate,
   staticFile,
   useCurrentFrame,
+  useVideoConfig,
 } from 'remotion';
 import {
   scenes as defaultScenes,
@@ -20,6 +21,11 @@ import {
 export type VideoProps = {
   scenes?: Scene[];
   logoSrc?: string;
+  bgmAsset?: string;
+  bgmLoop?: boolean;
+  bgmVolume?: number;
+  bgmFadeInFrames?: number;
+  bgmFadeOutFrames?: number;
 };
 
 const CONTENT_HEIGHT = 900;
@@ -30,6 +36,36 @@ const SIDEBAR_WIDTH = 480;
 const assetSrc = (src: string) => {
   if (/^(https?:|data:|blob:)/.test(src)) return src;
   return staticFile(src.replace(/^\//, ''));
+};
+
+const BackgroundMusic: React.FC<{
+  src: string;
+  loop: boolean;
+  volume: number;
+  fadeInFrames: number;
+  fadeOutFrames: number;
+}> = ({src, loop, volume, fadeInFrames, fadeOutFrames}) => {
+  const {durationInFrames} = useVideoConfig();
+
+  return (
+    <Audio
+      src={assetSrc(src)}
+      loop={loop}
+      volume={(frame) => {
+        const fadeIn =
+          fadeInFrames <= 0
+            ? 1
+            : Math.min(1, Math.max(0, frame / fadeInFrames));
+        const framesRemaining = Math.max(0, durationInFrames - 1 - frame);
+        const fadeOut =
+          fadeOutFrames <= 0
+            ? 1
+            : Math.min(1, framesRemaining / fadeOutFrames);
+
+        return volume * Math.min(fadeIn, fadeOut);
+      }}
+    />
+  );
 };
 
 const avatarAssets = {
@@ -358,9 +394,22 @@ const SceneCard: React.FC<{scene: Scene; logoSrc?: string}> = ({
 export const TestVideo: React.FC<VideoProps> = ({
   scenes = defaultScenes,
   logoSrc,
+  bgmAsset = 'common/bgm/main_bgm.mp3',
+  bgmLoop = true,
+  bgmVolume = 0.05,
+  bgmFadeInFrames = 30,
+  bgmFadeOutFrames = 45,
 }) => {
   return (
     <AbsoluteFill>
+      <BackgroundMusic
+        src={bgmAsset}
+        loop={bgmLoop}
+        volume={bgmVolume}
+        fadeInFrames={bgmFadeInFrames}
+        fadeOutFrames={bgmFadeOutFrames}
+      />
+
       {scenes.map((scene, i) => (
         <Sequence key={i} from={scene.from} durationInFrames={scene.duration}>
           <SceneCard scene={scene} logoSrc={logoSrc} />
