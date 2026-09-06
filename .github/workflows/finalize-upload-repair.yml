@@ -7,10 +7,6 @@ on:
         description: "Source Video Pipeline run id"
         required: true
         default: "34028008997"
-  push:
-    paths:
-      - ".github/finalize-upload-repair-trigger.txt"
-
 jobs:
   finalize-upload:
     runs-on: ubuntu-latest
