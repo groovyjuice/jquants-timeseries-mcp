@@ -112,6 +112,200 @@ const validate = (data) => {
   };
 };
 
+
+const formatChapterTimestamp = (seconds) => {
+  const total = Math.max(0, Math.floor(Number(seconds) || 0));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
+
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  }
+  return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+};
+
+const cleanChapterTitle = (value, fallback = 'セクション') => {
+  const title = String(value || '')
+    .replace(/\s+/g, ' ')
+    .replace(/[\r\n]+/g, ' ')
+    .trim();
+  return (title || fallback).slice(0, 80);
+};
+
+export const buildVideoChapters = ({
+  plan,
+  scenes,
+  fps = 30,
+  totalFrames,
+}) => {
+  const slides = Array.isArray(plan?.slides) ? plan.slides : [];
+  const timedScenes = Array.isArray(scenes) ? scenes : [];
+  if (!slides.length || !timedScenes.length) return [];
+
+  const durationFrames =
+    Number.isFinite(totalFrames) && totalFrames > 0
+      ? totalFrames
+      : timedScenes.reduce(
+          (max, scene) =>
+            Math.max(
+              max,
+              Number(scene?.from || 0) + Number(scene?.duration || 0),
+            ),
+          0,
+        );
+  const totalSeconds = durationFrames / fps;
+
+  const candidates = [
+    {
+      index: 0,
+      seconds: 0,
+      title: 'オープニング',
+      kind: 'opening',
+    },
+  ];
+
+  const sectionTitleIndexes = slides
+    .map((slide, index) => ({slide, index}))
+    .filter(({slide}) => slide?.type === 'section_title');
+
+  if (sectionTitleIndexes.length) {
+    for (const {slide, index} of sectionTitleIndexes) {
+      if (index === 0 || !timedScenes[index]) continue;
+      candidates.push({
+        index,
+        seconds: Number(timedScenes[index].from || 0) / fps,
+        title: cleanChapterTitle(
+          slide.section || slide.display_title || slide.headline,
+        ),
+        kind: 'section',
+      });
+    }
+  } else {
+    let previousSection = '';
+    for (let index = 0; index < slides.length; index++) {
+      const slide = slides[index];
+      const section = String(slide?.section || '').trim();
+      if (!section || section === previousSection || !timedScenes[index]) {
+        if (section) previousSection = section;
+        continue;
+      }
+      previousSection = section;
+      if (index === 0) continue;
+      candidates.push({
+        index,
+        seconds: Number(timedScenes[index].from || 0) / fps,
+        title: cleanChapterTitle(section),
+        kind: 'section',
+      });
+    }
+  }
+
+  candidates.sort((a, b) => a.seconds - b.seconds);
+
+  const chapters = [];
+  for (const candidate of candidates) {
+    if (!chapters.length) {
+      chapters.push({...candidate, seconds: 0});
+      continue;
+    }
+
+    const previous = chapters[chapters.length - 1];
+    if (candidate.seconds - previous.seconds < 10) continue;
+    if (totalSeconds - candidate.seconds < 10) continue;
+
+    const duplicateTitle = chapters.some(
+      (chapter) => chapter.title === candidate.title,
+    );
+    if (duplicateTitle) continue;
+
+    chapters.push(candidate);
+  }
+
+  return chapters.map((chapter) => ({
+    seconds: Math.floor(chapter.seconds),
+    timestamp: formatChapterTimestamp(chapter.seconds),
+    title: chapter.title,
+    slide_index: chapter.index,
+    kind: chapter.kind,
+  }));
+};
+
+const writePublishFiles = async ({outputDir, metadata}) => {
+  if (!outputDir) return;
+
+  await mkdir(outputDir, {recursive: true});
+  await Promise.all([
+    writeFile(
+      path.join(outputDir, 'publish_metadata.json'),
+      JSON.stringify(metadata, null, 2) + '\n',
+      'utf8',
+    ),
+    writeFile(
+      path.join(outputDir, 'titles.txt'),
+      metadata.title_candidates
+        .map((title, index) => `${index + 1}. ${title}`)
+        .join('\n') + '\n',
+      'utf8',
+    ),
+    writeFile(
+      path.join(outputDir, 'description.txt'),
+      metadata.description + '\n',
+      'utf8',
+    ),
+    writeFile(
+      path.join(outputDir, 'tags.txt'),
+      metadata.tags.join(', ') + '\n',
+      'utf8',
+    ),
+    writeFile(
+      path.join(outputDir, 'x_post.txt'),
+      metadata.x_post + '\n',
+      'utf8',
+    ),
+  ]);
+};
+
+export const applyChaptersToPublishMetadata = async ({
+  metadata,
+  plan,
+  scenes,
+  fps = 30,
+  totalFrames,
+  outputDir,
+}) => {
+  const chapters = buildVideoChapters({
+    plan,
+    scenes,
+    fps,
+    totalFrames,
+  });
+
+  const chapterText = chapters
+    .map((chapter) => `${chapter.timestamp} ${chapter.title}`)
+    .join('\n');
+
+  const descriptionParts = [
+    metadata.description_intro,
+  ];
+
+  if (chapters.length >= 3) {
+    descriptionParts.push('', '【目次】', chapterText);
+  }
+
+  descriptionParts.push('', CHANNEL_BOILERPLATE);
+
+  const finalized = {
+    ...metadata,
+    chapters,
+    chapters_enabled: chapters.length >= 3,
+    description: descriptionParts.join('\n'),
+  };
+
+  await writePublishFiles({outputDir, metadata: finalized});
+  return finalized;
+};
+
 export const generatePublishMetadata = async ({plan, outputDir}) => {
   if (!process.env.OPENAI_API_KEY) {
     throw new Error('OPENAI_API_KEY is not configured');
@@ -170,39 +364,7 @@ export const generatePublishMetadata = async ({plan, outputDir}) => {
     model,
   };
 
-  if (outputDir) {
-    await mkdir(outputDir, {recursive: true});
-    await Promise.all([
-      writeFile(
-        path.join(outputDir, 'publish_metadata.json'),
-        JSON.stringify(metadata, null, 2) + '\n',
-        'utf8',
-      ),
-      writeFile(
-        path.join(outputDir, 'titles.txt'),
-        metadata.title_candidates
-          .map((title, index) => `${index + 1}. ${title}`)
-          .join('\n') + '\n',
-        'utf8',
-      ),
-      writeFile(
-        path.join(outputDir, 'description.txt'),
-        metadata.description + '\n',
-        'utf8',
-      ),
-      writeFile(
-        path.join(outputDir, 'tags.txt'),
-        metadata.tags.join(', ') + '\n',
-        'utf8',
-      ),
-      writeFile(
-        path.join(outputDir, 'x_post.txt'),
-        metadata.x_post + '\n',
-        'utf8',
-      ),
-    ]);
-  }
-
+  await writePublishFiles({outputDir, metadata});
   return metadata;
 };
 
