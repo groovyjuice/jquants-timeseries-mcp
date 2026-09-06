@@ -9,6 +9,7 @@ export type Scene = {
   emotion: 'normal' | 'surprise' | 'serious' | 'smile';
   audioSrc?: string;
   mouthCues?: MouthState[];
+  slideSrc?: string;
 };
 
 export const scenes: Scene[] = [
