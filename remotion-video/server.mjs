@@ -40,6 +40,16 @@ const validateProps = (props) => {
     throw new Error('scenes must be a non-empty array');
   }
 
+  if (
+    props.tts_speed !== undefined &&
+    (typeof props.tts_speed !== 'number' ||
+      !Number.isFinite(props.tts_speed) ||
+      props.tts_speed < 0.25 ||
+      props.tts_speed > 4)
+  ) {
+    throw new Error('tts_speed must be a number between 0.25 and 4.0');
+  }
+
   for (const [index, scene] of props.scenes.entries()) {
     if (
       typeof scene.from !== 'number' ||
@@ -128,6 +138,7 @@ const buildNarratedProps = async (props, jobId) => {
     fps: 30,
     paddingFrames: 12,
     jobId,
+    ttsSpeed: props.tts_speed,
   });
 
   return {
