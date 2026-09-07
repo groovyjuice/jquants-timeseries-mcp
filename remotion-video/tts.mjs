@@ -13,6 +13,7 @@ const DEFAULT_INSTRUCTIONS = [
   'Keep pronunciation precise, especially for company names, numbers, and financial terms.',
   'For Japanese stock-market terminology, always pronounce 終値 as おわりね, never おわね.',
   'Always pronounce くら寿司 as くらずし, never くらすし.',
+  'Always pronounce 豊和工業 as ほうわこうぎょう.',
   'Avoid breathiness, raspiness, muffled resonance, exaggerated accents, slang, childish delivery, or theatrical acting.',
   'Read the supplied text faithfully without adding commentary.',
 ].join(' ');
@@ -23,6 +24,7 @@ const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 const PRONUNCIATION_REPLACEMENTS = [
   ['終値', 'おわりね'],
   ['くら寿司', 'くらずし'],
+  ['豊和工業', 'ほうわこうぎょう'],
   ['Terra Drone', 'テラドローン'],
   ['Terra B1', 'テラ ビーワン'],
   ['Terra A1', 'テラ エーワン'],
