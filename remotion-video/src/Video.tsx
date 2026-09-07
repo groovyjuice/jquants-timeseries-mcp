@@ -180,7 +180,12 @@ const Avatar: React.FC<{
   mouthCues?: MouthState[];
 }> = ({emotion, mouthCues}) => {
   const frame = useCurrentFrame();
-  const bob = Math.sin(frame / 11) * 3;
+
+  // Subtle idle motion: slow breathing + a tiny body rise/fall.
+  const breathingPhase = Math.sin(frame / 22);
+  const bob = breathingPhase * 2.2;
+  const breathingScaleY = 1 + breathingPhase * 0.006;
+  const breathingScaleX = 1 + breathingPhase * 0.0025;
 
   const isSmile = emotion === 'smile';
   const blinkPhase = frame % 120;
@@ -225,7 +230,8 @@ const Avatar: React.FC<{
         bottom: 18,
         width: 460,
         height: 460,
-        transform: `translateY(${bob}px)`,
+        transform: `translateY(${bob}px) scale(${breathingScaleX}, ${breathingScaleY})`,
+        transformOrigin: '50% 82%',
         filter: 'drop-shadow(0 14px 20px rgba(52, 94, 138, 0.16))',
       }}
     >
