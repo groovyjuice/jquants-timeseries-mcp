@@ -1,5 +1,6 @@
 import OpenAI, {toFile} from 'openai';
-import {mkdir, writeFile} from 'node:fs/promises';
+import {mkdir, writeFile, readFile, copyFile} from 'node:fs/promises';
+import {createHash} from 'node:crypto';
 import path from 'node:path';
 
 const DEFAULT_MODEL = 'gpt-4o-mini-tts';
@@ -21,6 +22,59 @@ const DEFAULT_INSTRUCTIONS = [
 ].join(' ');
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+
+const getCacheKey = ({text, speed, voice, fps}) => {
+  const config = getTtsConfig({speed, voice});
+  const payload = JSON.stringify({
+    version: 1,
+    spokenText: normalizeTtsText(String(text ?? '').trim()),
+    model: config.model,
+    voice: config.voice,
+    speed: config.speed,
+    instructions: config.instructions,
+    responseFormat: config.responseFormat,
+    fps,
+    alignmentModel: process.env.OPENAI_ALIGNMENT_MODEL || 'whisper-1',
+    language: 'ja',
+  });
+  return createHash('sha256').update(payload).digest('hex');
+};
+
+const loadCachedSynthesis = async ({cacheDir, cacheKey, outputPath}) => {
+  if (!cacheDir || !cacheKey) return null;
+  try {
+    const metaPath = path.join(cacheDir, cacheKey + '.json');
+    const wavPath = path.join(cacheDir, cacheKey + '.wav');
+    const meta = JSON.parse(await readFile(metaPath, 'utf8'));
+    await copyFile(wavPath, outputPath);
+    return {
+      ...meta,
+      path: outputPath,
+      cacheKey,
+      cacheHit: true,
+    };
+  } catch {
+    return null;
+  }
+};
+
+const saveCachedSynthesis = async ({cacheDir, cacheKey, result}) => {
+  if (!cacheDir || !cacheKey || !result?.path) return;
+  await mkdir(cacheDir, {recursive: true});
+  const wavPath = path.join(cacheDir, cacheKey + '.wav');
+  const metaPath = path.join(cacheDir, cacheKey + '.json');
+  await copyFile(result.path, wavPath);
+  const {
+    path: _path,
+    cacheHit: _cacheHit,
+    ...serializable
+  } = result;
+  await writeFile(
+    metaPath,
+    JSON.stringify({...serializable, cacheKey}, null, 2),
+    'utf8',
+  );
+};
 
 
 const PRONUNCIATION_REPLACEMENTS = [
@@ -601,6 +655,7 @@ export const prepareNarratedScenes = async ({
   jobId = String(Date.now()),
   ttsSpeed,
   ttsVoice,
+  cacheDir = process.env.TTS_CACHE_DIR || '',
 }) => {
   if (!Array.isArray(scenes) || scenes.length === 0) {
     throw new Error('scenes must be a non-empty array');
@@ -641,13 +696,52 @@ export const prepareNarratedScenes = async ({
 
       const filename = `tts-${jobId}-${index}.wav`;
       const outputPath = path.join(outputDir, filename);
-      const result = await synthesizeNarration({
+      const cacheKey = getCacheKey({
         text: narration,
-        outputPath,
-        fps,
         speed: ttsSpeed,
         voice: ttsVoice,
+        fps,
       });
+
+      let result = await loadCachedSynthesis({
+        cacheDir,
+        cacheKey,
+        outputPath,
+      });
+
+      if (result) {
+        console.log(
+          'TTS cache hit: scene ' +
+            (index + 1) +
+            '/' +
+            scenes.length +
+            ' key=' +
+            cacheKey.slice(0, 12),
+        );
+      } else {
+        result = await synthesizeNarration({
+          text: narration,
+          outputPath,
+          fps,
+          speed: ttsSpeed,
+          voice: ttsVoice,
+        });
+        result.cacheKey = cacheKey;
+        result.cacheHit = false;
+        await saveCachedSynthesis({
+          cacheDir,
+          cacheKey,
+          result,
+        });
+        console.log(
+          'TTS cache stored: scene ' +
+            (index + 1) +
+            '/' +
+            scenes.length +
+            ' key=' +
+            cacheKey.slice(0, 12),
+        );
+      }
 
       const syncQa = validateSceneSync({
         result,
@@ -663,6 +757,7 @@ export const prepareNarratedScenes = async ({
         outputPath,
         result,
         syncQa,
+        cacheKey,
       };
     }
   };
@@ -680,6 +775,7 @@ export const prepareNarratedScenes = async ({
       outputPath,
       result,
       syncQa,
+      cacheKey,
     } = synthesisResults[index];
 
     const minimumDuration =
@@ -707,6 +803,8 @@ export const prepareNarratedScenes = async ({
       bytes: result.bytes,
       analysis: result.analysis,
       subtitleAlignment: result.subtitleAlignment,
+      cacheKey,
+      cacheHit: result.cacheHit === true,
       syncQa,
     });
 
@@ -720,5 +818,8 @@ export const prepareNarratedScenes = async ({
     metrics,
     totalFrames: cursor,
     config: getTtsConfig({speed: ttsSpeed, voice: ttsVoice}),
+    cacheDir: cacheDir || null,
+    cacheHits: metrics.filter((item) => item.cacheHit).length,
+    cacheMisses: metrics.filter((item) => !item.cacheHit).length,
   };
 };
