@@ -1,0 +1,83 @@
+name: Render Kura Sushi Full Video
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/render-kurazushi-from-package.yml"
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
+    steps:
+      - name: Checkout render branch
+        uses: actions/checkout@v4
+        with:
+          ref: remotion-prototype
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        working-directory: remotion-video
+        run: npm install
+
+      - name: Wait for prepared render package
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="https://remotion-video-prototype.onrender.com/render-package.tar.gz"
+          for i in $(seq 1 80); do
+            echo "Package attempt $i"
+            rm -f render-package.tar.gz render-package.tmp
+            CODE=$(curl -L -sS --connect-timeout 20 --max-time 300 \
+              --retry 3 --retry-delay 3 --retry-all-errors \
+              -o render-package.tmp -w "%{http_code}" "$URL" || true)
+            SIZE=$(stat -c%s render-package.tmp 2>/dev/null || echo 0)
+            echo "HTTP=$CODE size=$SIZE"
+            if [ "$CODE" = "200" ] && [ "$SIZE" -gt 1000000 ]; then
+              if gzip -t render-package.tmp && tar -tzf render-package.tmp >/dev/null; then
+                mv render-package.tmp render-package.tar.gz
+                echo "Render package ready and verified."
+                exit 0
+              fi
+              echo "Package was incomplete or corrupt; retrying."
+            fi
+            rm -f render-package.tmp
+            sleep 30
+          done
+          echo "Timed out waiting for a valid render package."
+          exit 1
+
+      - name: Extract prepared assets
+        run: |
+          tar -xzf render-package.tar.gz -C remotion-video
+          test -f remotion-video/props.json
+
+      - name: Render full 1080p video
+        working-directory: remotion-video
+        run: |
+          mkdir -p out
+          npx remotion render src/index.tsx TestVideo out/kurazushi_chiikawa_full.mp4 \
+            --codec=h264 \
+            --concurrency=2 \
+            --props=props.json
+
+      - name: Inspect output
+        run: |
+          ffprobe -v error \
+            -show_entries format=duration,size \
+            -of default=noprint_wrappers=1 \
+            remotion-video/out/kurazushi_chiikawa_full.mp4
+
+      - name: Upload full video
+        uses: actions/upload-artifact@v4
+        with:
+          name: kurazushi-full-video-final
+          path: remotion-video/out/kurazushi_chiikawa_full.mp4
+          retention-days: 7

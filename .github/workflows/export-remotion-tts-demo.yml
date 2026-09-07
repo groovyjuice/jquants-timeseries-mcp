@@ -1,0 +1,29 @@
+name: Export Marin TTS Demo
+
+on:
+  push:
+    branches:
+      - remotion-prototype
+    paths:
+      - ".github/workflows/export-remotion-tts-demo.yml"
+  workflow_dispatch:
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download rendered demo
+        run: |
+          curl --fail --location --retry 8 --retry-delay 5 \
+            "https://remotion-video-prototype.onrender.com/demo-tts.mp4" \
+            --output tts_bgm_test_marin_speed1.18_bgm0.02.mp4
+          test -s tts_bgm_test_marin_speed1.18_bgm0.02.mp4
+
+      - name: Upload demo artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tts-bgm-test
+          path: tts_bgm_test_marin_speed1.18_bgm0.02.mp4
+          if-no-files-found: error
+
+# Export Marin high-quality TTS demo
