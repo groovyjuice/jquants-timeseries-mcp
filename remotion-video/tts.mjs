@@ -14,6 +14,8 @@ const DEFAULT_INSTRUCTIONS = [
   'For Japanese stock-market terminology, always pronounce 終値 as おわりね, never おわね.',
   'Always pronounce くら寿司 as くらずし, never くらすし.',
   'Always pronounce 豊和工業 as ほうわこうぎょう.',
+  'Always pronounce 突如 as とつじょ.',
+  'Always pronounce 商い as あきない.',
   'Avoid breathiness, raspiness, muffled resonance, exaggerated accents, slang, childish delivery, or theatrical acting.',
   'Read the supplied text faithfully without adding commentary.',
 ].join(' ');
@@ -25,6 +27,8 @@ const PRONUNCIATION_REPLACEMENTS = [
   ['終値', 'おわりね'],
   ['くら寿司', 'くらずし'],
   ['豊和工業', 'ほうわこうぎょう'],
+  ['突如', 'とつじょ'],
+  ['商い', 'あきない'],
   ['Terra Drone', 'テラドローン'],
   ['Terra B1', 'テラ ビーワン'],
   ['Terra A1', 'テラ エーワン'],
