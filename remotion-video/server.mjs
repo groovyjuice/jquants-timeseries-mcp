@@ -497,7 +497,12 @@ const createRenderPackage = async ({
 
 const autoRenderConfiguredProject = async () => {
   const useRepoPlan = process.env.AUTO_RENDER_REPO_PROJECT === '1';
-  if (!useRepoPlan && process.env.AUTO_RENDER_DRIVE_PROJECT !== '1') return;
+  const useRepoSprite = process.env.AUTO_RENDER_REPO_SPRITE === '1';
+  if (
+    !useRepoPlan &&
+    !useRepoSprite &&
+    process.env.AUTO_RENDER_DRIVE_PROJECT !== '1'
+  ) return;
 
   const videoPlanFileId = process.env.AUTO_PROJECT_VIDEO_PLAN_FILE_ID;
   const slidesFolderId = process.env.AUTO_PROJECT_SLIDES_FOLDER_ID;
@@ -508,6 +513,7 @@ const autoRenderConfiguredProject = async () => {
 
   if (
     !useRepoPlan &&
+    !useRepoSprite &&
     (
       !endingSlideFileId ||
       (!spritePlanFileId && (!videoPlanFileId || !slidesFolderId))
@@ -543,6 +549,15 @@ const autoRenderConfiguredProject = async () => {
       console.log('Auto project render: loading repository video plan');
       project = await prepareRepoPlanProject({
         planPath: path.join(cwd, 'terradone-video-plan.json'),
+      });
+    } else if (useRepoSprite) {
+      console.log('Auto project render: loading repository Howa sprite project');
+      await mkdir(projectDir, {recursive: true});
+      const spritePath = path.join(projectDir, 'project_sprite.webp');
+      await cp(path.join(cwd, 'howa_sprite_plan.webp'), spritePath);
+      project = await prepareEmbeddedSpriteProject({
+        spritePath,
+        publicPrefix,
       });
     } else if (spritePlanFileId) {
       console.log('Auto project render: loading sprite project and embedded plan from Drive');
