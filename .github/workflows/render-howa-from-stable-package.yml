@@ -24,9 +24,9 @@ jobs:
         run: |
           set -euo pipefail
           gzip -t render-package.tar.gz
-          tar -tzf render-package.tar.gz >/dev/null
-          tar -tzf render-package.tar.gz | grep -q './props.json'
-          tar -tzf render-package.tar.gz | grep -q './publish/publish_metadata.json'
+          tar -tzf render-package.tar.gz > package-list.txt
+          grep -Fxq './props.json' package-list.txt
+          grep -Fxq './publish/publish_metadata.json' package-list.txt
 
       - name: Re-publish package for render matrix
         uses: actions/upload-artifact@v4
