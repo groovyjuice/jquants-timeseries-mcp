@@ -1306,9 +1306,22 @@ const server = http.createServer(async (req, res) => {
   res.end('Remotion prototype: authenticated API');
 });
 
-server.listen(port, () => {
-  console.log(`Listening on :${port}`);
-  autoRenderConfiguredProject().catch((error) => {
-    console.error('Auto project render startup failure:', error);
+if (process.env.RENDER_WORKER_MODE === '1') {
+  console.log('Render worker mode: starting one-shot auto project job');
+  autoRenderConfiguredProject()
+    .then(() => {
+      console.log('Render worker mode: job finished');
+      process.exit(0);
+    })
+    .catch((error) => {
+      console.error('Render worker mode: job failed:', error);
+      process.exit(1);
+    });
+} else {
+  server.listen(port, () => {
+    console.log(`Listening on :${port}`);
+    autoRenderConfiguredProject().catch((error) => {
+      console.error('Auto project render startup failure:', error);
+    });
   });
-});
+}
