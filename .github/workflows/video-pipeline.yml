@@ -52,6 +52,28 @@ jobs:
           tar -tzf render-package.tar.gz | grep -q './props.json'
           tar -tzf render-package.tar.gz | grep -q './publish/publish_metadata.json'
 
+      - name: Verify Howa project identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf verify-package
+          mkdir -p verify-package
+          tar -xzf render-package.tar.gz -C verify-package ./props.json ./publish/publish_metadata.json
+          python - <<'PY'
+          import json
+          props = json.load(open("verify-package/props.json", encoding="utf-8"))
+          meta = json.load(open("verify-package/publish/publish_metadata.json", encoding="utf-8"))
+          scenes = props.get("scenes") or []
+          titles = meta.get("title_candidates") or []
+          desc = str(meta.get("description") or "")
+          haystack = "\n".join(map(str, titles)) + "\n" + desc
+          if len(scenes) != 43:
+              raise SystemExit(f"Unexpected scene count: {len(scenes)}")
+          if "豊和工業" not in haystack:
+              raise SystemExit("Render package is not the rebuilt Howa Kogyo project")
+          print("Verified rebuilt Howa package: scenes=43")
+          PY
+
       - name: Upload package once
         uses: actions/upload-artifact@v4
         with:
@@ -154,7 +176,6 @@ jobs:
       UPLOAD_POST_API_KEY: ${{ secrets.UPLOAD_POST_API_KEY }}
       UPLOAD_POST_USER: ${{ secrets.UPLOAD_POST_USER }}
       YOUTUBE_CATEGORY_ID: "25"
-      YOUTUBE_DRAFT_TITLE: "【下書き】タイトルを設定してください"
     steps:
       - name: Checkout common assets
         uses: actions/checkout@v4
@@ -262,7 +283,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node remotion-video/upload-post-youtube.mjs \
+          TITLE=$(python - <<'PY'
+          import json
+          meta = json.load(open("publish/publish_metadata.json", encoding="utf-8"))
+          titles = meta.get("title_candidates") or []
+          if not titles:
+              raise SystemExit("No title candidate found")
+          print(str(titles[0]).strip())
+          PY
+          )
+          test -n "$TITLE"
+          echo "YouTube draft title: $TITLE"
+          YOUTUBE_DRAFT_TITLE="$TITLE" node remotion-video/upload-post-youtube.mjs \
             final_video.mp4 \
             publish/publish_metadata.json \
             publish/youtube_upload.json
@@ -293,7 +325,7 @@ jobs:
       - name: Upload complete delivery package
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.project_key }}-delivery
+          name: ${{ inputs.project_key || 'howa-6203-rebuild' }}-delivery
           path: delivery/
           retention-days: 7
           compression-level: 0
