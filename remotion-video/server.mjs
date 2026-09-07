@@ -187,6 +187,87 @@ const resolveFfmpegBinary = async () => {
   return path.resolve(cwd, found);
 };
 
+const materializeSpriteScenes = async ({
+  project,
+  spritePath,
+  projectDir,
+  publicPrefix,
+}) => {
+  const ffmpeg = await resolveFfmpegBinary();
+  const scenes = [];
+
+  for (let index = 0; index < project.props.scenes.length; index++) {
+    const scene = project.props.scenes[index];
+
+    if (!scene.slideSpriteSrc) {
+      scenes.push(scene);
+      continue;
+    }
+
+    const columns = Math.max(1, scene.slideSpriteColumns ?? 4);
+    const rows = Math.max(1, scene.slideSpriteRows ?? 1);
+    const spriteIndex = Math.max(0, scene.slideSpriteIndex ?? index);
+    const col = spriteIndex % columns;
+    const row = Math.floor(spriteIndex / columns);
+    const filename =
+      'slide_' + String(index + 1).padStart(3, '0') + '.png';
+    const outputPath = path.join(projectDir, filename);
+    const filter =
+      'crop=iw/' +
+      columns +
+      ':ih/' +
+      rows +
+      ':' +
+      col +
+      '*iw/' +
+      columns +
+      ':' +
+      row +
+      '*ih/' +
+      rows;
+
+    await execFileAsync(
+      ffmpeg,
+      [
+        '-y',
+        '-i',
+        spritePath,
+        '-vf',
+        filter,
+        '-frames:v',
+        '1',
+        outputPath,
+      ],
+      {
+        cwd,
+        env: childEnv,
+        maxBuffer: 10 * 1024 * 1024,
+      },
+    );
+
+    const {
+      slideSpriteSrc,
+      slideSpriteIndex,
+      slideSpriteColumns,
+      slideSpriteRows,
+      ...rest
+    } = scene;
+
+    scenes.push({
+      ...rest,
+      slideSrc: publicPrefix + '/' + filename,
+    });
+  }
+
+  return {
+    ...project,
+    props: {
+      ...project.props,
+      scenes,
+    },
+  };
+};
+
 const rebaseScenes = (scenes) => {
   let cursor = 0;
   return scenes.map((scene) => {
@@ -551,18 +632,28 @@ const autoRenderConfiguredProject = async () => {
         planPath: path.join(cwd, 'terradone-video-plan.json'),
       });
     } else if (useRepoSprite) {
-      console.log('Auto project render: loading repository Howa bundled project');
+      console.log('Auto project render: loading repository Howa sprite project');
       await mkdir(projectDir, {recursive: true});
-      await stat(bundlePath);
-      await execFileAsync(
-        'tar',
-        ['-xzf', bundlePath, '-C', projectDir],
-        {cwd, env: childEnv, maxBuffer: 10 * 1024 * 1024},
+      const spritePath = path.join(projectDir, 'project_sprite.webp');
+      await cp(path.join(cwd, 'howa_sprite_plan.webp'), spritePath);
+      project = await prepareEmbeddedSpriteProject({
+        spritePath,
+        publicPrefix,
+      });
+      console.log(
+        'Auto project render: materializing sprite into individual slide images',
       );
-      project = await prepareLocalProject({
+      project = await materializeSpriteScenes({
+        project,
+        spritePath,
         projectDir,
         publicPrefix,
       });
+      console.log(
+        'Auto project render: materialized ' +
+          project.props.scenes.length +
+          ' individual slide scenes',
+      );
     } else if (spritePlanFileId) {
       console.log('Auto project render: loading sprite project and embedded plan from Drive');
       project = await prepareSpriteProject({
