@@ -1,0 +1,48 @@
+name: Fetch Howa render package
+
+on:
+  push:
+    branches:
+      - remotion-prototype
+    paths:
+      - .github/workflows/fetch-howa-render-package.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fetch-package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Wait for Render package and download it
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://remotion-video-prototype.onrender.com/render-package.tar.gz"
+          for i in $(seq 1 120); do
+            echo "Attempt $i/120"
+            status=$(curl -L -sS -o render-package.tar.gz.tmp -w "%{http_code}" "$url" || true)
+            if [ "$status" = "200" ]; then
+              size=$(stat -c%s render-package.tar.gz.tmp)
+              echo "Downloaded bytes=$size"
+              if [ "$size" -gt 50000000 ]; then
+                mv render-package.tar.gz.tmp render-package.tar.gz
+                tar -tzf render-package.tar.gz >/dev/null
+                exit 0
+              fi
+            fi
+            rm -f render-package.tar.gz.tmp
+            sleep 5
+          done
+          echo "Render package was not available in the polling window" >&2
+          exit 1
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: howa-render-package
+          path: render-package.tar.gz
+          if-no-files-found: error
+          retention-days: 2
