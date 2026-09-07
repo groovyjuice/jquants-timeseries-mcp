@@ -604,13 +604,15 @@ export const TestVideo: React.FC<VideoProps> = ({
 }) => {
   return (
     <AbsoluteFill>
-      <BackgroundMusic
-        src={bgmAsset}
-        loop={bgmLoop}
-        volume={bgmVolume}
-        fadeInFrames={bgmFadeInFrames}
-        fadeOutFrames={bgmFadeOutFrames}
-      />
+      {bgmVolume > 0 ? (
+        <BackgroundMusic
+          src={bgmAsset}
+          loop={bgmLoop}
+          volume={bgmVolume}
+          fadeInFrames={bgmFadeInFrames}
+          fadeOutFrames={bgmFadeOutFrames}
+        />
+      ) : null}
 
       {scenes.map((scene, i) => (
         <Sequence key={i} from={scene.from} durationInFrames={scene.duration}>
