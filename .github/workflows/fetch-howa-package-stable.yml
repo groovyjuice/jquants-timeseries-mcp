@@ -1,0 +1,48 @@
+name: Fetch Howa Package Stable
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/fetch-howa-package-stable.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fetch-package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Poll until a complete render package is available
+        shell: bash
+        run: |
+          set -u
+          URL="https://remotion-video-prototype.onrender.com/render-package.tar.gz"
+          for i in $(seq 1 180); do
+            echo "Attempt $i/180"
+            rm -f render-package.tmp render-package.tar.gz
+            CODE=$(curl -L -sS --connect-timeout 15 --max-time 180               --retry 2 --retry-delay 2 --retry-all-errors               -o render-package.tmp -w "%{http_code}" "$URL" || true)
+            SIZE=$(stat -c%s render-package.tmp 2>/dev/null || echo 0)
+            echo "HTTP=$CODE bytes=$SIZE"
+            if [ "$CODE" = "200" ] && [ "$SIZE" -gt 80000000 ]; then
+              if gzip -t render-package.tmp >/dev/null 2>&1 && tar -tzf render-package.tmp >/dev/null 2>&1; then
+                mv render-package.tmp render-package.tar.gz
+                echo "Complete package captured: $(stat -c%s render-package.tar.gz) bytes"
+                exit 0
+              fi
+              echo "Package is still being written; retrying."
+            fi
+            sleep 4
+          done
+          echo "No complete package captured" >&2
+          exit 1
+
+      - name: Upload immutable package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: howa-render-package-stable
+          path: render-package.tar.gz
+          retention-days: 7
+          compression-level: 0
