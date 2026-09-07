@@ -551,12 +551,16 @@ const autoRenderConfiguredProject = async () => {
         planPath: path.join(cwd, 'terradone-video-plan.json'),
       });
     } else if (useRepoSprite) {
-      console.log('Auto project render: loading repository Howa sprite project');
+      console.log('Auto project render: loading repository Howa bundled project');
       await mkdir(projectDir, {recursive: true});
-      const spritePath = path.join(projectDir, 'project_sprite.webp');
-      await cp(path.join(cwd, 'howa_sprite_plan.webp'), spritePath);
-      project = await prepareEmbeddedSpriteProject({
-        spritePath,
+      await stat(bundlePath);
+      await execFileAsync(
+        'tar',
+        ['-xzf', bundlePath, '-C', projectDir],
+        {cwd, env: childEnv, maxBuffer: 10 * 1024 * 1024},
+      );
+      project = await prepareLocalProject({
+        projectDir,
         publicPrefix,
       });
     } else if (spritePlanFileId) {
