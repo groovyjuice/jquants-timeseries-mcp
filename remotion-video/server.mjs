@@ -198,7 +198,7 @@ const rebaseScenes = (scenes) => {
 
 const splitScenesForRender = (
   scenes,
-  {maxFrames = 5400, maxScenes = 5} = {},
+  {maxFrames = 1800, maxScenes = 1} = {},
 ) => {
   const chunks = [];
   let current = [];
