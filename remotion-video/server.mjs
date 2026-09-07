@@ -715,7 +715,7 @@ const server = http.createServer(async (req, res) => {
   }
 
 
-  if (req.url === '/prepare-project-upload' && req.method === 'POST') {
+  if ((req.url === '/prepare-project-upload' || req.url === '/render-project-upload') && req.method === 'POST') {
     if (!isProjectIngestAuthorized(req)) {
       res.writeHead(401, {'content-type': 'application/json'});
       res.end(JSON.stringify({ok: false, error: 'Unauthorized'}));
@@ -766,6 +766,15 @@ const server = http.createServer(async (req, res) => {
         jobId,
         publishDir,
       });
+
+      if (req.url === '/render-project-upload') {
+        const output = await renderSegmentedVideo({
+          outputFilename: 'uploaded-project.mp4',
+          prepared,
+        });
+        await streamVideo(output, res, 'uploaded-project.mp4');
+        return;
+      }
 
       res.writeHead(200, {'content-type': 'application/json; charset=utf-8'});
       res.end(JSON.stringify({
