@@ -492,6 +492,92 @@ export const synthesizeNarration = async ({
   };
 };
 
+
+const validateSceneSync = ({
+  result,
+  fps,
+  paddingFrames,
+  sceneIndex,
+}) => {
+  const audioFrames = Math.max(
+    1,
+    Math.ceil(Number(result.durationSeconds || 0) * fps),
+  );
+  const mouthCues = Array.isArray(result.mouthCues) ? result.mouthCues : [];
+  const subtitleCues = Array.isArray(result.subtitleCues)
+    ? result.subtitleCues
+    : [];
+
+  if (!mouthCues.length) {
+    throw new Error(
+      `Sync QA failed for scene ${sceneIndex}: mouthCues are missing`,
+    );
+  }
+
+  if (Math.abs(mouthCues.length - audioFrames) > 2) {
+    throw new Error(
+      `Sync QA failed for scene ${sceneIndex}: mouthCues=${mouthCues.length}, audioFrames=${audioFrames}`,
+    );
+  }
+
+  if (!subtitleCues.length) {
+    throw new Error(
+      `Sync QA failed for scene ${sceneIndex}: subtitleCues are missing`,
+    );
+  }
+
+  if (
+    result.subtitleAlignment !== 'word-timestamps' &&
+    process.env.ALLOW_SUBTITLE_FALLBACK !== '1'
+  ) {
+    throw new Error(
+      `Sync QA failed for scene ${sceneIndex}: subtitle alignment fell back to ${result.subtitleAlignment}. Set ALLOW_SUBTITLE_FALLBACK=1 only for an intentional emergency fallback.`,
+    );
+  }
+
+  let previousEnd = 0;
+  for (const [cueIndex, cue] of subtitleCues.entries()) {
+    const start = Number(cue?.startFrame);
+    const end = Number(cue?.endFrame);
+
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+      throw new Error(
+        `Sync QA failed for scene ${sceneIndex}, cue ${cueIndex}: invalid frame range`,
+      );
+    }
+
+    if (start < 0 || start < previousEnd - 1) {
+      throw new Error(
+        `Sync QA failed for scene ${sceneIndex}, cue ${cueIndex}: cues are out of order or overlapping excessively`,
+      );
+    }
+
+    if (end > audioFrames + 2) {
+      throw new Error(
+        `Sync QA failed for scene ${sceneIndex}, cue ${cueIndex}: subtitle extends beyond spoken audio (end=${end}, audioFrames=${audioFrames})`,
+      );
+    }
+
+    previousEnd = end;
+  }
+
+  const sceneFrames = audioFrames + paddingFrames;
+  if (previousEnd >= sceneFrames) {
+    throw new Error(
+      `Sync QA failed for scene ${sceneIndex}: final subtitle reaches scene padding`,
+    );
+  }
+
+  return {
+    audioFrames,
+    mouthCueFrames: mouthCues.length,
+    subtitleCueCount: subtitleCues.length,
+    subtitleAlignment: result.subtitleAlignment,
+    finalSubtitleEndFrame: previousEnd,
+    paddingFrames,
+  };
+};
+
 export const prepareNarratedScenes = async ({
   scenes,
   outputDir,
@@ -549,12 +635,20 @@ export const prepareNarratedScenes = async ({
         voice: ttsVoice,
       });
 
+      const syncQa = validateSceneSync({
+        result,
+        fps,
+        paddingFrames,
+        sceneIndex: index,
+      });
+
       synthesisResults[index] = {
         scene,
         narration,
         filename,
         outputPath,
         result,
+        syncQa,
       };
     }
   };
@@ -571,6 +665,7 @@ export const prepareNarratedScenes = async ({
       filename,
       outputPath,
       result,
+      syncQa,
     } = synthesisResults[index];
 
     const minimumDuration =
@@ -598,6 +693,7 @@ export const prepareNarratedScenes = async ({
       bytes: result.bytes,
       analysis: result.analysis,
       subtitleAlignment: result.subtitleAlignment,
+      syncQa,
     });
 
     generatedFiles.push(outputPath);
