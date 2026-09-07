@@ -2,7 +2,7 @@ import http from 'node:http';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {createReadStream} from 'node:fs';
-import {stat, mkdir, writeFile, readFile, unlink, rm, cp} from 'node:fs/promises';
+import {stat, mkdir, writeFile, readFile, unlink, rm, cp, rename} from 'node:fs/promises';
 import path from 'node:path';
 import {planScenes} from './planner.mjs';
 import {readGoogleDocText} from './drive.mjs';
@@ -19,10 +19,13 @@ const port = Number(process.env.PORT || 10000);
 const cwd = process.cwd();
 const outDir = path.join(cwd, 'out');
 const generatedAudioDir = path.join(cwd, 'public', 'generated');
+const renderPackagePath = path.join(outDir, 'render-package.tar.gz');
+const renderResumeMarkerPath = path.join(outDir, 'render-resume.json');
+const renderResumeStageDir = path.join(outDir, 'render-resume-stage');
 
 const childEnv = {
   ...process.env,
-  NODE_OPTIONS: process.env.NODE_OPTIONS || '--max-old-space-size=384',
+  NODE_OPTIONS: process.env.NODE_OPTIONS || '--max-old-space-size=192',
 };
 
 const readJsonBody = async (req) => {
@@ -424,6 +427,7 @@ const renderSegmentedVideo = async ({
 }) => {
   const chunks = splitScenesForRender(prepared.scenes);
   const segmentPaths = [];
+  let finalOutput = null;
 
   console.log(
     'Segmented render: ' +
@@ -438,10 +442,33 @@ const renderSegmentedVideo = async ({
       const chunk = chunks[index];
       const segmentFilename =
         'segment-' + String(index + 1).padStart(2, '0') + '.mp4';
+      const segmentPath = path.join(outDir, segmentFilename);
+      const partialFilename = segmentFilename + '.partial.mp4';
+      const partialPath = path.join(outDir, partialFilename);
       const segmentFrames = chunk.reduce(
         (sum, scene) => sum + scene.duration,
         0,
       );
+
+      try {
+        const existing = await stat(segmentPath);
+        if (existing.size > 10 * 1024) {
+          segmentPaths.push(segmentPath);
+          console.log(
+            'Segmented render: resuming completed segment ' +
+              (index + 1) +
+              '/' +
+              chunks.length +
+              ', bytes=' +
+              existing.size,
+          );
+          continue;
+        }
+      } catch {
+        // Render missing segment below.
+      }
+
+      await unlink(partialPath).catch(() => {});
 
       console.log(
         'Segmented render: segment ' +
@@ -462,11 +489,12 @@ const renderSegmentedVideo = async ({
         bgmFadeOutFrames: 0,
       };
 
-      const segmentPath = await renderVideo(
+      const renderedPartialPath = await renderVideo(
         'TestVideo',
-        segmentFilename,
+        partialFilename,
         segmentProps,
       );
+      await rename(renderedPartialPath, segmentPath);
       segmentPaths.push(segmentPath);
       console.log(
         'Segmented render: completed segment ' +
@@ -477,16 +505,83 @@ const renderSegmentedVideo = async ({
     }
 
     console.log('Segmented render: concatenating segments and mixing BGM');
-    return await concatSegmentsAndAddBgm({
+    finalOutput = await concatSegmentsAndAddBgm({
       segmentPaths,
       outputFilename,
       totalFrames: prepared.totalFrames,
       props: prepared.props,
     });
+    return finalOutput;
   } finally {
-    await Promise.all(
-      segmentPaths.map((segment) => unlink(segment).catch(() => {})),
+    // Keep completed segments after a failed render so the next process can resume.
+    // Only remove them after the final concatenated output exists.
+    if (finalOutput) {
+      await Promise.all(
+        segmentPaths.map((segment) => unlink(segment).catch(() => {})),
+      );
+    }
+  }
+};
+
+const restorePreparedFromRenderPackage = async ({outputFilename}) => {
+  try {
+    const marker = JSON.parse(await readFile(renderResumeMarkerPath, 'utf8'));
+    if (marker.outputFilename !== outputFilename) return null;
+    await stat(renderPackagePath);
+
+    console.log(
+      'Auto project render: restoring prepared TTS/captions/mouth cues from render package',
     );
+
+    await rm(renderResumeStageDir, {recursive: true, force: true}).catch(() => {});
+    await mkdir(renderResumeStageDir, {recursive: true});
+    await execFileAsync(
+      'tar',
+      ['-xzf', renderPackagePath, '-C', renderResumeStageDir],
+      {cwd, env: childEnv, maxBuffer: 10 * 1024 * 1024},
+    );
+
+    const restoredGeneratedDir = path.join(
+      renderResumeStageDir,
+      'public',
+      'generated',
+    );
+    await rm(generatedAudioDir, {recursive: true, force: true}).catch(() => {});
+    await cp(restoredGeneratedDir, generatedAudioDir, {
+      recursive: true,
+      force: true,
+    });
+
+    const props = validateProps(
+      JSON.parse(
+        await readFile(path.join(renderResumeStageDir, 'props.json'), 'utf8'),
+      ),
+    );
+    const totalFrames = props.scenes.reduce(
+      (sum, scene) => sum + scene.duration,
+      0,
+    );
+
+    console.log(
+      'Auto project render: resume package restored, scenes=' +
+        props.scenes.length +
+        ', totalFrames=' +
+        totalFrames,
+    );
+
+    return {
+      props,
+      scenes: props.scenes,
+      totalFrames,
+      generatedFiles: [],
+    };
+  } catch (error) {
+    console.log(
+      'Auto project render: no usable resume package; preparing project normally (' +
+        String(error) +
+        ')',
+    );
+    return null;
   }
 };
 
@@ -619,6 +714,20 @@ const autoRenderConfiguredProject = async () => {
       // Render it below.
     }
 
+    const resumedPrepared = await restorePreparedFromRenderPackage({
+      outputFilename,
+    });
+    if (resumedPrepared) {
+      console.log('Auto project render: resuming segmented video render without regenerating TTS');
+      await renderSegmentedVideo({
+        outputFilename,
+        prepared: resumedPrepared,
+      });
+      await unlink(renderResumeMarkerPath).catch(() => {});
+      console.log(`AUTO PROJECT RENDER COMPLETE: ${output}`);
+      return;
+    }
+
     const jobId = `auto-project-${Date.now()}`;
     projectDir = path.join(generatedAudioDir, jobId);
     const publicPrefix = `generated/${jobId}`;
@@ -720,6 +829,17 @@ const autoRenderConfiguredProject = async () => {
       jobId,
       publishDir,
     });
+    await writeFile(
+      renderResumeMarkerPath,
+      JSON.stringify({
+        outputFilename,
+        totalFrames: prepared.totalFrames,
+        sceneCount: prepared.scenes.length,
+        createdAt: new Date().toISOString(),
+      }),
+      'utf8',
+    );
+    console.log('Auto project render: resume checkpoint saved');
 
     if (process.env.AUTO_RENDER_PACKAGE_ONLY === '1') {
       console.log('Auto project render: package-only mode complete');
@@ -732,6 +852,7 @@ const autoRenderConfiguredProject = async () => {
       prepared,
     });
 
+    await unlink(renderResumeMarkerPath).catch(() => {});
     console.log(`AUTO PROJECT RENDER COMPLETE: ${output}`);
   } catch (error) {
     console.error('AUTO PROJECT RENDER FAILED:', error);
