@@ -1,0 +1,276 @@
+name: Render Howa From Stable Package
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/render-howa-from-stable-package.yml"
+  workflow_dispatch:
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Download immutable Howa render package
+        uses: actions/download-artifact@v4
+        with:
+          name: howa-render-package-stable
+          path: .
+          run-id: 34139923411
+          github-token: ${{ github.token }}
+
+      - name: Verify stable package
+        shell: bash
+        run: |
+          set -euo pipefail
+          gzip -t render-package.tar.gz
+          tar -tzf render-package.tar.gz >/dev/null
+          tar -tzf render-package.tar.gz | grep -q './props.json'
+          tar -tzf render-package.tar.gz | grep -q './publish/publish_metadata.json'
+
+      - name: Re-publish package for render matrix
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-render-package
+          path: render-package.tar.gz
+          retention-days: 2
+          compression-level: 0
+  render:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        segment: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
+    steps:
+      - name: Checkout render branch
+        uses: actions/checkout@v4
+        with:
+          ref: remotion-prototype
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Cache npm download directory
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('remotion-video/package.json') }}
+          restore-keys: |
+            npm-${{ runner.os }}-
+
+      - name: Install dependencies without demos
+        working-directory: remotion-video
+        run: npm install --ignore-scripts --prefer-offline
+
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+
+      - name: Download prepared package
+        uses: actions/download-artifact@v4
+        with:
+          name: pipeline-render-package
+          path: .
+
+      - name: Extract assets
+        run: tar -xzf render-package.tar.gz -C remotion-video
+
+      - name: Build segment props
+        working-directory: remotion-video
+        run: |
+          node segment-props.mjs props.json "${{ matrix.segment }}" 12 segment-props.json
+
+      - name: Render segment
+        working-directory: remotion-video
+        run: |
+          N=$(printf "%02d" $((${{ matrix.segment }} + 1)))
+          mkdir -p out
+          npx remotion render src/index.tsx TestVideo "out/segment-${N}-raw.mp4" \
+            --codec=h264 \
+            --concurrency=2 \
+            --props=segment-props.json
+
+      - name: Compress segment to standard bitrate
+        working-directory: remotion-video
+        shell: bash
+        run: |
+          set -euo pipefail
+          N=$(printf "%02d" $((${{ matrix.segment }} + 1)))
+          ffmpeg -y -i "out/segment-${N}-raw.mp4" \
+            -c:v libx264 -preset medium -b:v 550k \
+            -maxrate 700k -bufsize 1400k \
+            -pix_fmt yuv420p \
+            -c:a aac -b:a 128k \
+            -movflags +faststart \
+            "out/segment-${N}.mp4"
+          rm -f "out/segment-${N}-raw.mp4"
+          ffprobe -v error "out/segment-${N}.mp4" >/dev/null
+
+      - name: Upload compressed segment
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-segment-${{ matrix.segment }}
+          path: remotion-video/out/segment-*.mp4
+          retention-days: 1
+          compression-level: 0
+
+  finalize:
+    needs: render
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      UPLOAD_POST_API_KEY: ${{ secrets.UPLOAD_POST_API_KEY }}
+      UPLOAD_POST_USER: ${{ secrets.UPLOAD_POST_USER }}
+      YOUTUBE_CATEGORY_ID: "25"
+      YOUTUBE_DRAFT_TITLE: "【下書き】タイトルを設定してください"
+    steps:
+      - name: Checkout common assets
+        uses: actions/checkout@v4
+        with:
+          ref: remotion-prototype
+
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+
+      - name: Download all compressed segments
+        uses: actions/download-artifact@v4
+        with:
+          pattern: pipeline-segment-*
+          path: segments
+          merge-multiple: true
+
+      - name: Download render package for publish files
+        uses: actions/download-artifact@v4
+        with:
+          name: pipeline-render-package
+          path: package
+
+      - name: Extract publish metadata
+        run: |
+          mkdir -p publish
+          tar -xzf package/render-package.tar.gz -C publish ./publish
+          mv publish/publish/* publish/
+          rmdir publish/publish
+
+      - name: Verify and concatenate segments
+        shell: bash
+        run: |
+          set -euo pipefail
+          COUNT=$(find segments -maxdepth 1 -name 'segment-*.mp4' | wc -l)
+          echo "segment_count=$COUNT"
+          test "$COUNT" -eq 12
+          : > concat.txt
+          for f in $(find segments -maxdepth 1 -name 'segment-*.mp4' | sort); do
+            ffprobe -v error "$f" >/dev/null
+            echo "file '$PWD/$f'" >> concat.txt
+          done
+          ffmpeg -y -f concat -safe 0 -i concat.txt -c copy narration-video.mp4
+
+      - name: Mix BGM and normalize loudness
+        shell: bash
+        run: |
+          set -euo pipefail
+          DURATION=$(ffprobe -v error -show_entries format=duration -of csv=p=0 narration-video.mp4)
+          FADE_OUT_START=$(awk -v d="$DURATION" 'BEGIN {x=d-1.5; if(x<0)x=0; printf "%.3f", x}')
+          BGM="remotion-video/public/common/bgm/main_bgm.mp3"
+
+          ffmpeg -y \
+            -i narration-video.mp4 \
+            -stream_loop -1 -i "$BGM" \
+            -filter_complex "[1:a]volume=0.025,afade=t=in:st=0:d=1,afade=t=out:st=${FADE_OUT_START}:d=1.5[bgm];[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=0[mix];[mix]loudnorm=I=-15:LRA=7:TP=-1[a]" \
+            -map 0:v:0 -map "[a]" \
+            -c:v copy -c:a aac -b:a 128k -shortest \
+            -movflags +faststart \
+            final_video.mp4
+
+      - name: Verify final media
+        shell: bash
+        run: |
+          set -euo pipefail
+          SIZE=$(stat -c%s final_video.mp4)
+          echo "bytes=$SIZE"
+          test "$SIZE" -lt 200000000
+          ffmpeg -v error -i final_video.mp4 -f null - 2> publish/decode_errors.txt
+          test ! -s publish/decode_errors.txt
+
+          ffprobe -v error \
+            -show_entries format=duration,size,bit_rate \
+            -of default=noprint_wrappers=1 \
+            final_video.mp4 > publish/media_info.txt
+
+          ffmpeg -hide_banner -i final_video.mp4 \
+            -af loudnorm=I=-15:LRA=7:TP=-1:print_format=json \
+            -f null - 2> loudness.txt || true
+
+          python - <<'PY'
+          import json, re
+          text = open('loudness.txt', encoding='utf-8', errors='ignore').read()
+          matches = re.findall(r'\{\s*"input_i".*?\}', text, re.S)
+          if not matches:
+              raise SystemExit("Could not parse loudness measurement")
+          data = json.loads(matches[-1])
+          i = float(data["input_i"])
+          tp = float(data["input_tp"])
+          with open("publish/loudness.txt", "w", encoding="utf-8") as f:
+              f.write(f"integrated_lufs={i}\ntrue_peak_dbtp={tp}\n")
+          if not (-16.0 <= i <= -14.0):
+              raise SystemExit(f"Integrated loudness out of range: {i}")
+          if tp > -0.5:
+              raise SystemExit(f"True peak too high: {tp}")
+          PY
+
+      - name: Require Upload-Post credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$UPLOAD_POST_API_KEY"
+          test -n "$UPLOAD_POST_USER"
+
+      - name: Upload private draft to YouTube
+        shell: bash
+        run: |
+          set -euo pipefail
+          node remotion-video/upload-post-youtube.mjs \
+            final_video.mp4 \
+            publish/publish_metadata.json \
+            publish/youtube_upload.json
+
+      - name: Verify YouTube draft result
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          p = "publish/youtube_upload.json"
+          data = json.load(open(p, encoding="utf-8"))
+          assert data["video_id"], "Missing YouTube video id"
+          assert data["privacy_status"] == "private", data
+          assert data["description_set"] is True, data
+          assert data["tag_count"] > 0, data
+          print("video_id=" + data["video_id"])
+          print("studio_edit_url=" + data["studio_edit_url"])
+          PY
+
+      - name: Assemble delivery folder
+        shell: bash
+        run: |
+          mkdir -p delivery
+          mv final_video.mp4 delivery/
+          cp -r publish/* delivery/
+
+      - name: Upload complete delivery package
+        uses: actions/upload-artifact@v4
+        with:
+          name: howa-beginner-delivery
+          path: delivery/
+          retention-days: 7
+          compression-level: 0
