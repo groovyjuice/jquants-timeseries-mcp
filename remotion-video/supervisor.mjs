@@ -76,14 +76,14 @@ const server = http.createServer(async (req, res) => {
   res.end('Remotion render supervisor');
 });
 
-const runWorker = (extraEnv = {}) =>
+const runWorker = (script, extraEnv = {}) =>
   new Promise((resolve) => {
-    const child = spawn(process.execPath, ['server.mjs'], {
+    const child = spawn(process.execPath, [script], {
       cwd,
       env: {
         ...process.env,
         ...extraEnv,
-        RENDER_WORKER_MODE: '1',
+        RENDER_WORKER_MODE: script === 'server.mjs' ? '1' : '0',
       },
       stdio: 'inherit',
     });
@@ -109,7 +109,7 @@ const runPipeline = async () => {
 
   if (!hasPackage) {
     console.log('Supervisor: phase 1/2 preparing TTS, captions, mouth cues and render package');
-    const prep = await runWorker({AUTO_RENDER_PACKAGE_ONLY: '1'});
+    const prep = await runWorker('server.mjs', {AUTO_RENDER_PACKAGE_ONLY: '1'});
     if (prep.code !== 0) {
       console.error(
         'Supervisor: preparation worker failed, code=' +
@@ -136,7 +136,7 @@ const runPipeline = async () => {
     console.log(
       'Supervisor: phase 2/2 render worker attempt ' + attempt + '/4',
     );
-    const render = await runWorker({AUTO_RENDER_PACKAGE_ONLY: '0'});
+    const render = await runWorker('render-only.mjs', {AUTO_RENDER_PACKAGE_ONLY: '0'});
 
     if (await fileExists(outputPath)) {
       console.log('Supervisor: final video render complete');
