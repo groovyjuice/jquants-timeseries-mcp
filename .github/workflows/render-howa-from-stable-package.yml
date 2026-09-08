@@ -16,7 +16,7 @@ jobs:
         with:
           name: howa-render-package-stable
           path: .
-          run-id: 34139923411
+          run-id: 34222790415
           github-token: ${{ github.token }}
 
       - name: Verify stable package
@@ -270,7 +270,7 @@ jobs:
       - name: Upload complete delivery package
         uses: actions/upload-artifact@v4
         with:
-          name: howa-beginner-delivery
+          name: howa-6203-20260908-delivery
           path: delivery/
           retention-days: 7
           compression-level: 0
