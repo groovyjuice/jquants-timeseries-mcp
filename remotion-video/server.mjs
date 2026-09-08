@@ -12,6 +12,7 @@ import {
   getTtsConfig,
   prepareNarratedScenes,
   prepareFinalNarratedScenes,
+  prepareFinalNarratedScenesFromLocal,
   synthesizeNarration,
 } from './tts.mjs';
 
@@ -635,6 +636,32 @@ const buildFinalAudioProps = async ({
 };
 
 
+
+const buildLocalFinalAudioProps = async ({
+  props,
+  manifestPath,
+  audioDir,
+}) => {
+  const prepared = await prepareFinalNarratedScenesFromLocal({
+    scenes: props.scenes,
+    manifestPath,
+    audioDir,
+    outputDir: generatedAudioDir,
+    publicPrefix: 'generated',
+    fps: 30,
+    paddingFrames: 12,
+  });
+
+  return {
+    ...prepared,
+    props: {
+      ...props,
+      scenes: prepared.scenes,
+    },
+  };
+};
+
+
 const createRenderPackage = async ({
   projectDir,
   prepared,
@@ -995,6 +1022,122 @@ const server = http.createServer(async (req, res) => {
     } catch {
       res.writeHead(404, {'content-type': 'application/json'});
       res.end(JSON.stringify({ok: false, error: 'Project video not available'}));
+    }
+    return;
+  }
+
+
+
+  if (req.url === '/prepare-final-bundle' && req.method === 'POST') {
+    if (!isProjectIngestAuthorized(req)) {
+      res.writeHead(401, {'content-type': 'application/json'});
+      res.end(JSON.stringify({ok: false, error: 'Unauthorized'}));
+      return;
+    }
+
+    let ingestDir = null;
+    let projectDir = null;
+    let generatedAudioFiles = [];
+
+    try {
+      const body = await readRawBody(req, 90 * 1024 * 1024);
+      if (!body.length) throw new Error('Uploaded final bundle is empty');
+
+      const jobId = 'final-bundle-' + Date.now();
+      ingestDir = path.join(outDir, jobId + '-ingest');
+      projectDir = path.join(generatedAudioDir, jobId);
+      await mkdir(ingestDir, {recursive: true});
+      await mkdir(projectDir, {recursive: true});
+
+      const bundlePath = path.join(ingestDir, 'input.tar.gz');
+      await writeFile(bundlePath, body);
+      await execFileAsync(
+        'tar',
+        ['-xzf', bundlePath, '-C', ingestDir],
+        {cwd, env: childEnv, maxBuffer: 20 * 1024 * 1024},
+      );
+
+      await Promise.all([
+        cp(path.join(ingestDir, 'video_plan.json'), path.join(projectDir, 'video_plan.json')),
+        cp(path.join(ingestDir, 'slides'), path.join(projectDir, 'slides'), {
+          recursive: true,
+          force: true,
+        }),
+        cp(path.join(ingestDir, 'ending_slide.webp'), path.join(projectDir, 'ending_slide.webp')),
+      ]);
+
+      const project = await prepareLocalProject({
+        projectDir,
+        publicPrefix: 'generated/' + jobId,
+      });
+      const props = validateProps(project.props);
+      const publishDir = path.join(projectDir, 'publish');
+
+      const [prepared, publishMetadata] = await Promise.all([
+        buildLocalFinalAudioProps({
+          props,
+          manifestPath: path.join(ingestDir, 'audio', 'manifest.json'),
+          audioDir: path.join(ingestDir, 'audio'),
+        }),
+        generatePublishMetadata({
+          plan: project.plan,
+          outputDir: publishDir,
+        }),
+      ]);
+      generatedAudioFiles = prepared.generatedFiles;
+
+      const finalizedPublishMetadata =
+        await applyChaptersToPublishMetadata({
+          metadata: publishMetadata,
+          plan: project.plan,
+          scenes: prepared.scenes,
+          fps: 30,
+          totalFrames: prepared.totalFrames,
+          outputDir: publishDir,
+        });
+
+      const packagePath = await createRenderPackage({
+        projectDir,
+        prepared,
+        jobId,
+        publishDir,
+      });
+
+      await execFileAsync('gzip', ['-t', packagePath], {
+        cwd,
+        env: childEnv,
+        maxBuffer: 10 * 1024 * 1024,
+      });
+      await execFileAsync('tar', ['-tzf', packagePath], {
+        cwd,
+        env: childEnv,
+        maxBuffer: 30 * 1024 * 1024,
+      });
+
+      const packageInfo = await stat(packagePath);
+      res.writeHead(200, {'content-type': 'application/json; charset=utf-8'});
+      res.end(JSON.stringify({
+        ok: true,
+        scenes: prepared.scenes.length,
+        totalFrames: prepared.totalFrames,
+        durationSeconds: prepared.totalFrames / 30,
+        titleCandidates: finalizedPublishMetadata.title_candidates.length,
+        chapters: finalizedPublishMetadata.chapters.length,
+        renderPackageBytes: packageInfo.size,
+        audioMode: 'final-local-wav',
+      }));
+    } catch (error) {
+      console.error('Final bundle preparation failed:', error);
+      res.writeHead(400, {'content-type': 'application/json'});
+      res.end(JSON.stringify({ok: false, error: String(error)}));
+    } finally {
+      await cleanupGenerated(generatedAudioFiles);
+      if (projectDir) {
+        await rm(projectDir, {recursive: true, force: true}).catch(() => {});
+      }
+      if (ingestDir) {
+        await rm(ingestDir, {recursive: true, force: true}).catch(() => {});
+      }
     }
     return;
   }
