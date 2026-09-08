@@ -98,6 +98,7 @@ const normalizeResult = ({payload, youtube, requestId, metadata}) => {
     privacy_status: 'private',
     contains_synthetic_media: true,
     draft_title:
+      String(metadata?.title_candidates?.[0] || '').trim() ||
       process.env.YOUTUBE_DRAFT_TITLE?.trim() ||
       '【下書き】タイトルを設定してください',
     description_set: Boolean(String(metadata?.description || '').trim()),
@@ -117,6 +118,7 @@ const upload = async ({videoPath, metadataPath}) => {
   if (!fileStat.size) throw new Error('Video file is empty');
 
   const title =
+    String(metadata?.title_candidates?.[0] || '').trim() ||
     process.env.YOUTUBE_DRAFT_TITLE?.trim() ||
     '【下書き】タイトルを設定してください';
   const categoryId =
