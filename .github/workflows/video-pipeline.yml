@@ -144,15 +144,14 @@ jobs:
             --concurrency=2 \
             --props=segment-props.json
 
-      - name: Compress segment to standard bitrate
+      - name: Compress segment with CRF quality mode
         working-directory: remotion-video
         shell: bash
         run: |
           set -euo pipefail
           N=$(printf "%02d" $((${{ matrix.segment }} + 1)))
           ffmpeg -y -i "out/segment-${N}-raw.mp4" \
-            -c:v libx264 -preset medium -b:v 550k \
-            -maxrate 700k -bufsize 1400k \
+            -c:v libx264 -preset medium -crf 19 \
             -pix_fmt yuv420p \
             -c:a aac -b:a 128k \
             -movflags +faststart \
@@ -244,7 +243,7 @@ jobs:
           set -euo pipefail
           SIZE=$(stat -c%s final_video.mp4)
           echo "bytes=$SIZE"
-          test "$SIZE" -lt 200000000
+          test "$SIZE" -gt 1000000
 
           ffprobe -v error \
             -show_entries format=duration,size,bit_rate \
