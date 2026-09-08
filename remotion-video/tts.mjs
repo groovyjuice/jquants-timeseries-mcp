@@ -600,7 +600,9 @@ const validateSceneSync = ({
   }
 
   if (
-    result.subtitleAlignment !== 'word-timestamps' &&
+    !['word-timestamps', 'manifest-segment-timestamps'].includes(
+      result.subtitleAlignment,
+    ) &&
     process.env.ALLOW_SUBTITLE_FALLBACK !== '1'
   ) {
     throw new Error(
@@ -670,6 +672,54 @@ const resolveFfmpegForFinalAudio = async () => {
 const compactComparableText = (value) =>
   String(value ?? '').replace(/\s+/g, '').trim();
 
+
+const buildFinalSegmentSubtitleCues = async ({
+  segmentPaths,
+  segmentRecords,
+  fps,
+  finalAudioFrames,
+}) => {
+  if (segmentPaths.length !== segmentRecords.length) {
+    throw new Error(
+      'Final WAV segment path/manifest count mismatch: paths=' +
+        segmentPaths.length +
+        ', records=' +
+        segmentRecords.length,
+    );
+  }
+
+  const cues = [];
+  let cursor = 0;
+
+  for (let i = 0; i < segmentPaths.length; i++) {
+    const buffer = await readFile(segmentPaths[i]);
+    const parsed = parseWav(buffer);
+    const frames = Math.max(1, Math.round(parsed.durationSeconds * fps));
+    const startFrame = cursor;
+    const unclampedEnd = cursor + frames;
+    const endFrame = Math.max(
+      startFrame + 1,
+      Math.min(finalAudioFrames, unclampedEnd),
+    );
+    cues.push({
+      startFrame,
+      endFrame,
+      text: String(segmentRecords[i]?.display_text || '').trim(),
+    });
+    cursor = endFrame;
+  }
+
+  if (cues.length) {
+    cues[cues.length - 1].endFrame = Math.max(
+      cues[cues.length - 1].startFrame + 1,
+      finalAudioFrames,
+    );
+  }
+
+  return cues;
+};
+
+
 export const prepareFinalNarratedScenes = async ({
   scenes,
   audioFolderId,
@@ -685,10 +735,6 @@ export const prepareFinalNarratedScenes = async ({
   if (!audioFolderId || !manifestFileId) {
     throw new Error('audioFolderId and manifestFileId are required');
   }
-  if (!process.env.OPENAI_API_KEY) {
-    throw new Error('OPENAI_API_KEY is required for final-WAV subtitle alignment');
-  }
-
   await mkdir(outputDir, {recursive: true});
   const manifest = await readDriveJsonFile(manifestFileId);
   if (!Array.isArray(manifest?.slides) || !Array.isArray(manifest?.segments)) {
@@ -720,7 +766,6 @@ export const prepareFinalNarratedScenes = async ({
   const sourceDir = path.join(outputDir, 'final-audio-source-' + Date.now());
   await mkdir(sourceDir, {recursive: true});
   const ffmpeg = await resolveFfmpegForFinalAudio();
-  const client = new OpenAI({apiKey: process.env.OPENAI_API_KEY});
 
   const prepared = [];
   const generatedFiles = [];
@@ -813,8 +858,9 @@ export const prepareFinalNarratedScenes = async ({
         scene.narration || scene.body || '',
       ).trim();
 
-      const manifestDisplay = (segmentsBySlide.get(expectedSlideId) || [])
-        .sort((a, b) => Number(a.segment_no || 0) - Number(b.segment_no || 0))
+      const slideSegments = (segmentsBySlide.get(expectedSlideId) || [])
+        .sort((a, b) => Number(a.segment_no || 0) - Number(b.segment_no || 0));
+      const manifestDisplay = slideSegments
         .map((segment) => String(segment.display_text || ''))
         .join('');
       if (
@@ -826,19 +872,22 @@ export const prepareFinalNarratedScenes = async ({
         );
       }
 
-      const aligned = await alignSubtitlesToAudio({
-        client,
-        audioBuffer,
-        displayText: narration,
-        durationSeconds: analysis.durationSeconds,
+      const audioFrames = Math.max(
+        1,
+        Math.ceil(analysis.durationSeconds * fps),
+      );
+      const subtitleCues = await buildFinalSegmentSubtitleCues({
+        segmentPaths: localSegments,
+        segmentRecords: slideSegments,
         fps,
+        finalAudioFrames: audioFrames,
       });
 
       const result = {
         path: finalPath,
         bytes: audioBuffer.length,
-        subtitleCues: aligned.subtitleCues,
-        subtitleAlignment: aligned.subtitleAlignment,
+        subtitleCues,
+        subtitleAlignment: 'manifest-segment-timestamps',
         ...analysis,
       };
       const syncQa = validateSceneSync({
@@ -871,7 +920,7 @@ export const prepareFinalNarratedScenes = async ({
         narration,
         audioSrc: publicPrefix + '/' + finalFilename,
         mouthCues: analysis.mouthCues,
-        subtitleCues: aligned.subtitleCues,
+        subtitleCues,
       });
       generatedFiles.push(finalPath);
       metrics.push({
@@ -879,7 +928,7 @@ export const prepareFinalNarratedScenes = async ({
         slideId: expectedSlideId,
         durationSeconds: analysis.durationSeconds,
         durationFrames: duration,
-        subtitleAlignment: aligned.subtitleAlignment,
+        subtitleAlignment: 'manifest-segment-timestamps',
         syncQa,
         sourceSegmentCount: segmentFiles.length,
       });
@@ -920,10 +969,6 @@ export const prepareFinalNarratedScenesFromLocal = async ({
   if (!manifestPath || !audioDir) {
     throw new Error('manifestPath and audioDir are required');
   }
-  if (!process.env.OPENAI_API_KEY) {
-    throw new Error('OPENAI_API_KEY is required for final-WAV subtitle alignment');
-  }
-
   await mkdir(outputDir, {recursive: true});
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
   if (!Array.isArray(manifest?.slides) || !Array.isArray(manifest?.segments)) {
@@ -947,7 +992,6 @@ export const prepareFinalNarratedScenesFromLocal = async ({
   }
 
   const ffmpeg = await resolveFfmpegForFinalAudio();
-  const client = new OpenAI({apiKey: process.env.OPENAI_API_KEY});
   const workDir = path.join(outputDir, 'final-audio-work-' + Date.now());
   await mkdir(workDir, {recursive: true});
 
@@ -1037,8 +1081,9 @@ export const prepareFinalNarratedScenesFromLocal = async ({
       const analysis = buildMouthCuesFromWav(audioBuffer, fps);
       const narration = String(scene.narration || scene.body || '').trim();
 
-      const manifestDisplay = (segmentsBySlide.get(expectedSlideId) || [])
-        .sort((a, b) => Number(a.segment_no || 0) - Number(b.segment_no || 0))
+      const slideSegments = (segmentsBySlide.get(expectedSlideId) || [])
+        .sort((a, b) => Number(a.segment_no || 0) - Number(b.segment_no || 0));
+      const manifestDisplay = slideSegments
         .map((segment) => String(segment.display_text || ''))
         .join('');
       if (
@@ -1048,19 +1093,22 @@ export const prepareFinalNarratedScenesFromLocal = async ({
         throw new Error('Final WAV narration text mismatch for ' + expectedSlideId);
       }
 
-      const aligned = await alignSubtitlesToAudio({
-        client,
-        audioBuffer,
-        displayText: narration,
-        durationSeconds: analysis.durationSeconds,
+      const audioFrames = Math.max(
+        1,
+        Math.ceil(analysis.durationSeconds * fps),
+      );
+      const subtitleCues = await buildFinalSegmentSubtitleCues({
+        segmentPaths: localSegments,
+        segmentRecords: slideSegments,
         fps,
+        finalAudioFrames: audioFrames,
       });
 
       const result = {
         path: finalPath,
         bytes: audioBuffer.length,
-        subtitleCues: aligned.subtitleCues,
-        subtitleAlignment: aligned.subtitleAlignment,
+        subtitleCues,
+        subtitleAlignment: 'manifest-segment-timestamps',
         ...analysis,
       };
       const syncQa = validateSceneSync({
@@ -1093,7 +1141,7 @@ export const prepareFinalNarratedScenesFromLocal = async ({
         narration,
         audioSrc: publicPrefix + '/' + finalFilename,
         mouthCues: analysis.mouthCues,
-        subtitleCues: aligned.subtitleCues,
+        subtitleCues,
       });
       generatedFiles.push(finalPath);
       metrics.push({
@@ -1101,7 +1149,7 @@ export const prepareFinalNarratedScenesFromLocal = async ({
         slideId: expectedSlideId,
         durationSeconds: analysis.durationSeconds,
         durationFrames: duration,
-        subtitleAlignment: aligned.subtitleAlignment,
+        subtitleAlignment: 'manifest-segment-timestamps',
         syncQa,
         sourceSegmentCount: segmentFiles.length,
       });
