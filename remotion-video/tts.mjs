@@ -670,12 +670,220 @@ const resolveFfmpegForFinalAudio = async () => {
 const compactComparableText = (value) =>
   String(value ?? '').replace(/\s+/g, '').trim();
 
+const TARGET_SENTENCE_GAP_SECONDS = 0.5;
+const TARGET_SECTION_TRANSITION_SECONDS = 1.0;
+
+const endsNarrationSentence = (value) =>
+  /[。！？!?](?:[」』）)\]】”’"']*)$/u.test(String(value ?? '').trim());
+
+const buildNarrationPausePlan = ({
+  scene,
+  segmentRecords,
+  audioSettings,
+  fps,
+  paddingFrames,
+}) => {
+  const prePhoneme = Math.max(
+    0,
+    Number(audioSettings?.pre_phoneme_length || 0),
+  );
+  const postPhoneme = Math.max(
+    0,
+    Number(audioSettings?.post_phoneme_length || 0),
+  );
+  const inherentSegmentBoundary = prePhoneme + postPhoneme;
+  const sentenceExtraSeconds = Math.max(
+    0,
+    TARGET_SENTENCE_GAP_SECONDS - inherentSegmentBoundary,
+  );
+  const scenePaddingSeconds = Math.max(0, Number(paddingFrames || 0) / fps);
+  const sectionExtraSeconds =
+    scene?.slideType === 'section_title' || scene?.type === 'section_title'
+      ? Math.max(
+          0,
+          TARGET_SECTION_TRANSITION_SECONDS -
+            scenePaddingSeconds -
+            inherentSegmentBoundary,
+        )
+      : 0;
+
+  const afterSegmentSeconds = segmentRecords.map((record, index) => {
+    if (index >= segmentRecords.length - 1) return 0;
+    return endsNarrationSentence(record?.display_text)
+      ? sentenceExtraSeconds
+      : 0;
+  });
+
+  return {
+    targetSentenceGapSeconds: TARGET_SENTENCE_GAP_SECONDS,
+    targetSectionTransitionSeconds: TARGET_SECTION_TRANSITION_SECONDS,
+    leadingPauseSeconds: sectionExtraSeconds,
+    afterSegmentSeconds,
+    totalPauseSeconds:
+      sectionExtraSeconds +
+      afterSegmentSeconds.reduce((sum, seconds) => sum + seconds, 0),
+    sentencePauseCount: afterSegmentSeconds.filter((seconds) => seconds > 0)
+      .length,
+    prePhonemeSeconds: prePhoneme,
+    postPhonemeSeconds: postPhoneme,
+    scenePaddingSeconds,
+  };
+};
+
+const ensureSilenceWav = async ({
+  ffmpeg,
+  workDir,
+  seconds,
+  sampleRate,
+  channels,
+}) => {
+  const safeSeconds = Math.max(0, Number(seconds || 0));
+  if (safeSeconds <= 0) return null;
+  const channelLayout =
+    Number(channels) === 1 ? 'mono' : Number(channels) === 2 ? 'stereo' : null;
+  if (!channelLayout) {
+    throw new Error('Unsupported WAV channel count for pause insertion: ' + channels);
+  }
+  const millis = Math.round(safeSeconds * 1000);
+  const outputPath = path.join(
+    workDir,
+    `silence-${sampleRate}hz-${channelLayout}-${millis}ms.wav`,
+  );
+  try {
+    const info = await stat(outputPath);
+    if (info.isFile() && info.size > 44) return outputPath;
+  } catch {}
+
+  await execFileAsync(
+    ffmpeg,
+    [
+      '-y',
+      '-f',
+      'lavfi',
+      '-i',
+      `anullsrc=channel_layout=${channelLayout}:sample_rate=${sampleRate}`,
+      '-t',
+      safeSeconds.toFixed(3),
+      '-c:a',
+      'pcm_s16le',
+      outputPath,
+    ],
+    {maxBuffer: 10 * 1024 * 1024},
+  );
+  return outputPath;
+};
+
+const buildFinalAudioWithPauses = async ({
+  ffmpeg,
+  segmentPaths,
+  segmentRecords,
+  scene,
+  audioSettings,
+  fps,
+  paddingFrames,
+  outputPath,
+  workDir,
+  expectedSlideId,
+}) => {
+  if (segmentPaths.length !== segmentRecords.length) {
+    throw new Error(
+      'Final WAV segment path/manifest count mismatch for ' +
+        expectedSlideId +
+        ': paths=' +
+        segmentPaths.length +
+        ', records=' +
+        segmentRecords.length,
+    );
+  }
+
+  const firstBuffer = await readFile(segmentPaths[0]);
+  const firstWav = parseWav(firstBuffer);
+  if (firstWav.audioFormat !== 1 || firstWav.bitsPerSample !== 16) {
+    throw new Error(
+      'Pause insertion requires PCM16 WAV for ' +
+        expectedSlideId +
+        ': format=' +
+        firstWav.audioFormat +
+        ', bits=' +
+        firstWav.bitsPerSample,
+    );
+  }
+
+  const pausePlan = buildNarrationPausePlan({
+    scene,
+    segmentRecords,
+    audioSettings,
+    fps,
+    paddingFrames,
+  });
+  const concatItems = [];
+
+  if (pausePlan.leadingPauseSeconds > 0) {
+    concatItems.push(
+      await ensureSilenceWav({
+        ffmpeg,
+        workDir,
+        seconds: pausePlan.leadingPauseSeconds,
+        sampleRate: firstWav.sampleRate,
+        channels: firstWav.channels,
+      }),
+    );
+  }
+
+  for (let i = 0; i < segmentPaths.length; i++) {
+    concatItems.push(segmentPaths[i]);
+    const pauseSeconds = Number(pausePlan.afterSegmentSeconds[i] || 0);
+    if (pauseSeconds > 0) {
+      concatItems.push(
+        await ensureSilenceWav({
+          ffmpeg,
+          workDir,
+          seconds: pauseSeconds,
+          sampleRate: firstWav.sampleRate,
+          channels: firstWav.channels,
+        }),
+      );
+    }
+  }
+
+  if (concatItems.length === 1) {
+    await copyFile(concatItems[0], outputPath);
+  } else {
+    const concatPath = path.join(workDir, expectedSlideId + '-concat.txt');
+    await writeFile(
+      concatPath,
+      concatItems.map((p) => "file '" + p + "'").join('\n') + '\n',
+      'utf8',
+    );
+    await execFileAsync(
+      ffmpeg,
+      [
+        '-y',
+        '-f',
+        'concat',
+        '-safe',
+        '0',
+        '-i',
+        concatPath,
+        '-c:a',
+        'pcm_s16le',
+        outputPath,
+      ],
+      {maxBuffer: 10 * 1024 * 1024},
+    );
+  }
+
+  return pausePlan;
+};
+
 
 const buildFinalSegmentSubtitleCues = async ({
   segmentPaths,
   segmentRecords,
   fps,
   finalAudioFrames,
+  leadingPauseSeconds = 0,
+  afterSegmentPauseSeconds = [],
 }) => {
   if (segmentPaths.length !== segmentRecords.length) {
     throw new Error(
@@ -687,30 +895,41 @@ const buildFinalSegmentSubtitleCues = async ({
   }
 
   const cues = [];
-  let cursor = 0;
+  let cursor = Math.max(0, Math.round(leadingPauseSeconds * fps));
 
   for (let i = 0; i < segmentPaths.length; i++) {
     const buffer = await readFile(segmentPaths[i]);
     const parsed = parseWav(buffer);
     const frames = Math.max(1, Math.round(parsed.durationSeconds * fps));
-    const startFrame = cursor;
-    const unclampedEnd = cursor + frames;
-    const endFrame = Math.max(
-      startFrame + 1,
-      Math.min(finalAudioFrames, unclampedEnd),
-    );
-    cues.push({
-      startFrame,
-      endFrame,
+    const localCues = buildFallbackSubtitleCues({
       text: String(segmentRecords[i]?.display_text || '').trim(),
+      durationSeconds: parsed.durationSeconds,
+      fps,
     });
-    cursor = endFrame;
-  }
 
-  if (cues.length) {
-    cues[cues.length - 1].endFrame = Math.max(
-      cues[cues.length - 1].startFrame + 1,
-      finalAudioFrames,
+    for (const cue of localCues) {
+      const startFrame = Math.min(
+        finalAudioFrames - 1,
+        Math.max(0, cursor + Number(cue.startFrame || 0)),
+      );
+      const endFrame = Math.max(
+        startFrame + 1,
+        Math.min(
+          finalAudioFrames,
+          cursor + Number(cue.endFrame || 0),
+        ),
+      );
+      cues.push({
+        ...cue,
+        startFrame,
+        endFrame,
+      });
+    }
+
+    cursor += frames;
+    cursor += Math.max(
+      0,
+      Math.round(Number(afterSegmentPauseSeconds[i] || 0) * fps),
     );
   }
 
@@ -826,34 +1045,28 @@ export const prepareFinalNarratedScenes = async ({
         localSegments.push(localPath);
       }
 
-      const finalFilename = 'final-' + expectedSlideId + '.wav';
-      const finalPath = path.join(outputDir, finalFilename);
-      if (localSegments.length === 1) {
-        await copyFile(localSegments[0], finalPath);
-      } else {
-        const concatPath = path.join(sourceDir, expectedSlideId + '-concat.txt');
-        await writeFile(
-          concatPath,
-          localSegments.map((p) => "file '" + p + "'").join('\n') + '\n',
-          'utf8',
-        );
-        await execFileAsync(
-          ffmpeg,
-          [
-            '-y',
-            '-f',
-            'concat',
-            '-safe',
-            '0',
-            '-i',
-            concatPath,
-            '-c:a',
-            'pcm_s16le',
-            finalPath,
-          ],
-          {maxBuffer: 10 * 1024 * 1024},
+      const slideSegments = (segmentsBySlide.get(expectedSlideId) || [])
+        .sort((a, b) => Number(a.segment_no || 0) - Number(b.segment_no || 0));
+      if (slideSegments.length !== localSegments.length) {
+        throw new Error(
+          'Final WAV segment metadata count mismatch for ' + expectedSlideId,
         );
       }
+
+      const finalFilename = 'final-' + expectedSlideId + '.wav';
+      const finalPath = path.join(outputDir, finalFilename);
+      const pausePlan = await buildFinalAudioWithPauses({
+        ffmpeg,
+        segmentPaths: localSegments,
+        segmentRecords: slideSegments,
+        scene,
+        audioSettings: manifest.audio_settings,
+        fps,
+        paddingFrames,
+        outputPath: finalPath,
+        workDir: sourceDir,
+        expectedSlideId,
+      });
 
       const audioBuffer = await readFile(finalPath);
       const analysis = buildMouthCuesFromWav(audioBuffer, fps);
@@ -861,8 +1074,6 @@ export const prepareFinalNarratedScenes = async ({
         scene.narration || scene.body || '',
       ).trim();
 
-      const slideSegments = (segmentsBySlide.get(expectedSlideId) || [])
-        .sort((a, b) => Number(a.segment_no || 0) - Number(b.segment_no || 0));
       const manifestDisplay = slideSegments
         .map((segment) => String(segment.display_text || ''))
         .join('');
@@ -899,12 +1110,18 @@ export const prepareFinalNarratedScenes = async ({
       }
 
       if (!subtitleCues) {
-        subtitleCues = buildFallbackSubtitleCues({
-          text: narration,
-          durationSeconds: analysis.durationSeconds,
+        subtitleCues = await buildFinalSegmentSubtitleCues({
+          segmentPaths: localSegments,
+          segmentRecords: slideSegments,
           fps,
+          finalAudioFrames: Math.max(
+            1,
+            Math.ceil(analysis.durationSeconds * fps),
+          ),
+          leadingPauseSeconds: pausePlan.leadingPauseSeconds,
+          afterSegmentPauseSeconds: pausePlan.afterSegmentSeconds,
         });
-        subtitleAlignment = 'duration-fallback';
+        subtitleAlignment = 'segment-duration-fallback';
       }
 
       const result = {
@@ -921,17 +1138,21 @@ export const prepareFinalNarratedScenes = async ({
         sceneIndex: index,
       });
       const expectedDuration = Number(slideManifest.duration_sec || 0);
+      const expectedDurationWithPauses =
+        expectedDuration > 0
+          ? expectedDuration + Number(pausePlan.totalPauseSeconds || 0)
+          : 0;
       if (
-        expectedDuration > 0 &&
-        Math.abs(analysis.durationSeconds - expectedDuration) > 0.15
+        expectedDurationWithPauses > 0 &&
+        Math.abs(analysis.durationSeconds - expectedDurationWithPauses) > 0.15
       ) {
         throw new Error(
           'Final WAV duration mismatch for ' +
             expectedSlideId +
             ': wav=' +
             analysis.durationSeconds.toFixed(3) +
-            ', manifest=' +
-            expectedDuration.toFixed(3),
+            ', manifest+pauses=' +
+            expectedDurationWithPauses.toFixed(3),
         );
       }
 
@@ -955,6 +1176,9 @@ export const prepareFinalNarratedScenes = async ({
         subtitleAlignment,
         syncQa,
         sourceSegmentCount: segmentFiles.length,
+        pauseSeconds: pausePlan.totalPauseSeconds,
+        sentencePauseCount: pausePlan.sentencePauseCount,
+        sectionLeadPauseSeconds: pausePlan.leadingPauseSeconds,
       });
       cursor += duration;
     }
@@ -1077,41 +1301,33 @@ export const prepareFinalNarratedScenesFromLocal = async ({
         localSegments.push(localPath);
       }
 
-      const finalFilename = 'final-' + expectedSlideId + '.wav';
-      const finalPath = path.join(outputDir, finalFilename);
-      if (localSegments.length === 1) {
-        await copyFile(localSegments[0], finalPath);
-      } else {
-        const concatPath = path.join(workDir, expectedSlideId + '-concat.txt');
-        await writeFile(
-          concatPath,
-          localSegments.map((p) => "file '" + p + "'").join('\n') + '\n',
-          'utf8',
-        );
-        await execFileAsync(
-          ffmpeg,
-          [
-            '-y',
-            '-f',
-            'concat',
-            '-safe',
-            '0',
-            '-i',
-            concatPath,
-            '-c:a',
-            'pcm_s16le',
-            finalPath,
-          ],
-          {maxBuffer: 10 * 1024 * 1024},
+      const slideSegments = (segmentsBySlide.get(expectedSlideId) || [])
+        .sort((a, b) => Number(a.segment_no || 0) - Number(b.segment_no || 0));
+      if (slideSegments.length !== localSegments.length) {
+        throw new Error(
+          'Final WAV segment metadata count mismatch for ' + expectedSlideId,
         );
       }
+
+      const finalFilename = 'final-' + expectedSlideId + '.wav';
+      const finalPath = path.join(outputDir, finalFilename);
+      const pausePlan = await buildFinalAudioWithPauses({
+        ffmpeg,
+        segmentPaths: localSegments,
+        segmentRecords: slideSegments,
+        scene,
+        audioSettings: manifest.audio_settings,
+        fps,
+        paddingFrames,
+        outputPath: finalPath,
+        workDir,
+        expectedSlideId,
+      });
 
       const audioBuffer = await readFile(finalPath);
       const analysis = buildMouthCuesFromWav(audioBuffer, fps);
       const narration = String(scene.narration || scene.body || '').trim();
 
-      const slideSegments = (segmentsBySlide.get(expectedSlideId) || [])
-        .sort((a, b) => Number(a.segment_no || 0) - Number(b.segment_no || 0));
       const manifestDisplay = slideSegments
         .map((segment) => String(segment.display_text || ''))
         .join('');
@@ -1146,12 +1362,18 @@ export const prepareFinalNarratedScenesFromLocal = async ({
       }
 
       if (!subtitleCues) {
-        subtitleCues = buildFallbackSubtitleCues({
-          text: narration,
-          durationSeconds: analysis.durationSeconds,
+        subtitleCues = await buildFinalSegmentSubtitleCues({
+          segmentPaths: localSegments,
+          segmentRecords: slideSegments,
           fps,
+          finalAudioFrames: Math.max(
+            1,
+            Math.ceil(analysis.durationSeconds * fps),
+          ),
+          leadingPauseSeconds: pausePlan.leadingPauseSeconds,
+          afterSegmentPauseSeconds: pausePlan.afterSegmentSeconds,
         });
-        subtitleAlignment = 'duration-fallback';
+        subtitleAlignment = 'segment-duration-fallback';
       }
 
       const result = {
@@ -1169,17 +1391,21 @@ export const prepareFinalNarratedScenesFromLocal = async ({
       });
 
       const expectedDuration = Number(slideManifest.duration_sec || 0);
+      const expectedDurationWithPauses =
+        expectedDuration > 0
+          ? expectedDuration + Number(pausePlan.totalPauseSeconds || 0)
+          : 0;
       if (
-        expectedDuration > 0 &&
-        Math.abs(analysis.durationSeconds - expectedDuration) > 0.15
+        expectedDurationWithPauses > 0 &&
+        Math.abs(analysis.durationSeconds - expectedDurationWithPauses) > 0.15
       ) {
         throw new Error(
           'Final WAV duration mismatch for ' +
             expectedSlideId +
             ': wav=' +
             analysis.durationSeconds.toFixed(3) +
-            ', manifest=' +
-            expectedDuration.toFixed(3),
+            ', manifest+pauses=' +
+            expectedDurationWithPauses.toFixed(3),
         );
       }
 
@@ -1202,6 +1428,9 @@ export const prepareFinalNarratedScenesFromLocal = async ({
         subtitleAlignment,
         syncQa,
         sourceSegmentCount: segmentFiles.length,
+        pauseSeconds: pausePlan.totalPauseSeconds,
+        sentencePauseCount: pausePlan.sentencePauseCount,
+        sectionLeadPauseSeconds: pausePlan.leadingPauseSeconds,
       });
       cursor += duration;
     }
