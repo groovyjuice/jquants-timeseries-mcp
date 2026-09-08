@@ -128,6 +128,11 @@ const runPipeline = async () => {
     return;
   }
 
+  if (process.env.AUTO_RENDER_PACKAGE_ONLY === '1') {
+    console.log('Supervisor: package-only mode; skipping Render-side final render');
+    return;
+  }
+
   // The preparation process has exited here, releasing its heap and TTS buffers.
   // Start Chromium only in a fresh render-only worker.
   for (let attempt = 1; attempt <= 4; attempt++) {
