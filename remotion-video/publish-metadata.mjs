@@ -339,62 +339,152 @@ export const applyChaptersToPublishMetadata = async ({
   return finalized;
 };
 
-export const generatePublishMetadata = async ({plan, outputDir}) => {
-  if (!process.env.OPENAI_API_KEY) {
-    throw new Error('OPENAI_API_KEY is not configured');
+
+const buildDeterministicMetadata = (plan) => {
+  const slides = Array.isArray(plan?.slides) ? plan.slides : [];
+  const baseTitle = String(
+    plan?.video_title ||
+      plan?.title ||
+      slides[0]?.display_title ||
+      slides[0]?.headline ||
+      '動画解説',
+  ).trim();
+  const topic = String(plan?.topic || '').trim();
+  const securityCode = normalizeSecurityCode(plan);
+
+  const rawTitles = [
+    baseTitle,
+    baseTitle + '｜背景と注目点を整理',
+    baseTitle + '｜投資家が確認したいポイント',
+    baseTitle + '｜材料と今後の焦点',
+    baseTitle + '｜何が起きているのか',
+    baseTitle + '｜株価材料を整理',
+    baseTitle + '｜期待と実績を分けて確認',
+    baseTitle + '｜ニュースの要点を解説',
+    baseTitle + '｜今後どこを見るべきか',
+    baseTitle + '｜個人投資家向けに整理',
+  ];
+  const titleCandidates = [...new Set(rawTitles.map((v) => v.slice(0, 100)))];
+  while (titleCandidates.length < 10) {
+    titleCandidates.push(
+      (baseTitle + '｜解説' + (titleCandidates.length + 1)).slice(0, 100),
+    );
   }
 
+  const sourceTerms = [baseTitle, topic]
+    .join(' ')
+    .split(/[\s、。・｜|／/（）()「」『』【】]+/)
+    .map((v) => v.trim())
+    .filter((v) => v.length >= 2 && v.length <= 30);
+
+  const genericTags = securityCode
+    ? ['日本株', '株式投資', '個人投資家', '企業分析', '株価', '投資ニュース', 'マーケット', '銘柄分析']
+    : ['投資', '個人投資家', '投資ニュース', 'マーケット', '市場分析', '資産運用', 'ニュース解説', '相場'];
+
+  const tags = ensureRequiredTags({
+    tags: [...sourceTerms, ...genericTags],
+    plan,
+  });
+  while (tags.length < 10) {
+    tags.push('投資解説' + (tags.length + 1));
+  }
+
+  const descriptionIntro = topic
+    ? baseTitle + 'について解説します。今回の動画では、' + topic +
+      'を中心に、動画内で扱っている事実関係、背景、注目点を順番に整理します。短期的な値動きだけでなく、材料と実際の業績・進捗を分けて確認できる内容です。'
+    : baseTitle +
+      'について、動画内で扱っている事実関係、背景、注目点を順番に整理して解説します。';
+
+  const xBodyBase =
+    '【新着動画】' + baseTitle + 'を公開しました。背景と注目点を動画で整理しています。';
+  const xBody =
+    xEstimatedLength(xBodyBase) <= 140
+      ? xBodyBase
+      : '【新着動画】' + baseTitle.slice(0, 65) + 'を解説しました。';
+
+  return validate({
+    title_candidates: titleCandidates.slice(0, 10),
+    description_intro: descriptionIntro,
+    tags: tags.slice(0, 30),
+    x_post_body: xBody,
+  });
+};
+
+
+export const generatePublishMetadata = async ({plan, outputDir}) => {
   const source = compactSource(plan);
   if (!source.trim()) {
     throw new Error('video plan does not contain enough content for publish metadata');
   }
 
-  const client = new OpenAI({apiKey: process.env.OPENAI_API_KEY});
-  const model = process.env.OPENAI_METADATA_MODEL || process.env.OPENAI_MODEL || 'gpt-5.6-sol';
+  let generated;
+  let model = 'deterministic-plan-derived';
 
-  const response = await client.responses.create({
-    model,
-    reasoning: {effort: 'low'},
-    instructions: [
-      'You create publication metadata for the Japanese YouTube channel 賢明なる投資家チャンネル.',
-      'Base every factual claim only on the supplied video plan/narration.',
-      'Do not invent prices, dates, earnings figures, company claims, or conclusions.',
-      'Generate exactly 10 distinct Japanese YouTube title candidates.',
-      'Titles should be useful to individual investors, clear, compelling, and not misleading clickbait.',
-      'Mix styles: news-focused, investor-question, risk-focused, and analytical titles.',
-      'description_intro is the video-specific opening section only. Write about 250-500 Japanese characters.',
-      'It should explain what the video covers and the main investor viewpoints without spoiling every conclusion.',
-      'Do not include the standard channel boilerplate in description_intro; the system appends it.',
-      'tags must be 10-30 YouTube tags as plain terms without #. Include the company/topic, related investor terms, and important themes actually present in the video.',
-      'Always include 賢明なる投資家チャンネル as a tag.',
-      'If the supplied plan has a Japanese listed-equity security_code, include that 4-digit code as a tag.',
-      'Do not invent or add a stock code for Bitcoin, crypto, gold, silver, oil, FX, indices, or other non-equity themes.',
-      'x_post_body is a concise Japanese announcement for X. Do not include a URL; the system appends [動画URL].',
-      'Keep x_post_body short enough that adding a URL still fits within 140 characters. Aim for 100 Japanese characters or less.',
-      'Do not use investment-recommendation language such as 絶対買い or 必ず上がる.',
-    ].join(' '),
-    input: source,
-    text: {
-      format: {
-        type: 'json_schema',
-        name: 'youtube_publish_metadata',
-        strict: true,
-        schema,
-      },
-    },
-  });
+  if (
+    process.env.OPENAI_METADATA_ENABLED === '1' &&
+    process.env.OPENAI_API_KEY
+  ) {
+    try {
+      const client = new OpenAI({apiKey: process.env.OPENAI_API_KEY});
+      model =
+        process.env.OPENAI_METADATA_MODEL ||
+        process.env.OPENAI_MODEL ||
+        'gpt-5.6-sol';
 
-  const generated = validate(JSON.parse(response.output_text));
+      const response = await client.responses.create({
+        model,
+        reasoning: {effort: 'low'},
+        instructions: [
+          'You create publication metadata for the Japanese YouTube channel 賢明なる投資家チャンネル.',
+          'Base every factual claim only on the supplied video plan/narration.',
+          'Do not invent prices, dates, earnings figures, company claims, or conclusions.',
+          'Generate exactly 10 distinct Japanese YouTube title candidates.',
+          'Titles should be useful to individual investors, clear, compelling, and not misleading clickbait.',
+          'Mix styles: news-focused, investor-question, risk-focused, and analytical titles.',
+          'description_intro is the video-specific opening section only. Write about 250-500 Japanese characters.',
+          'It should explain what the video covers and the main investor viewpoints without spoiling every conclusion.',
+          'Do not include the standard channel boilerplate in description_intro; the system appends it.',
+          'tags must be 10-30 YouTube tags as plain terms without #.',
+          'Always include 賢明なる投資家チャンネル as a tag.',
+          'If the supplied plan has a Japanese listed-equity security_code, include that 4-digit code as a tag.',
+          'x_post_body is a concise Japanese announcement for X. Do not include a URL; the system appends [動画URL].',
+          'Keep x_post_body short enough that adding a URL still fits within 140 characters.',
+          'Do not use investment-recommendation language such as 絶対買い or 必ず上がる.',
+        ].join(' '),
+        input: source,
+        text: {
+          format: {
+            type: 'json_schema',
+            name: 'youtube_publish_metadata',
+            strict: true,
+            schema,
+          },
+        },
+      });
+      generated = validate(JSON.parse(response.output_text));
+    } catch (error) {
+      console.warn(
+        'OpenAI publish metadata generation unavailable; using deterministic plan-derived metadata:',
+        String(error),
+      );
+      generated = buildDeterministicMetadata(plan);
+      model = 'deterministic-plan-derived';
+    }
+  } else {
+    generated = buildDeterministicMetadata(plan);
+  }
+
   generated.tags = ensureRequiredTags({
     tags: generated.tags,
     plan,
   });
+
   const description = [
     generated.description_intro,
     '',
     CHANNEL_BOILERPLATE,
   ].join('\n');
-  const xPost = `${generated.x_post_body}\n[動画URL]`;
+  const xPost = generated.x_post_body + '\n[動画URL]';
 
   const metadata = {
     ...generated,
