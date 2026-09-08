@@ -868,18 +868,20 @@ const autoRenderConfiguredProject = async () => {
       );
     }
 
-    const audioPreparation = useFinalAudio
-      ? buildFinalAudioProps({
-          props,
-          audioFolderId: finalAudioFolderId,
-          manifestFileId: finalAudioManifestFileId,
-        })
-      : buildNarratedProps(props, jobId);
+    if (!useFinalAudio) {
+      throw new Error(
+        'Current video master requires completed final WAV files; Render-side TTS generation is disabled',
+      );
+    }
+
+    const audioPreparation = buildFinalAudioProps({
+      props,
+      audioFolderId: finalAudioFolderId,
+      manifestFileId: finalAudioManifestFileId,
+    });
 
     console.log(
-      useFinalAudio
-        ? 'Auto project render: using user-completed final WAV files; TTS generation is disabled'
-        : 'Auto project render: legacy TTS mode enabled',
+      'Auto project render: using user-completed final WAV files; Render-side TTS generation is disabled',
     );
 
     const [prepared, publishMetadata] = await Promise.all([
