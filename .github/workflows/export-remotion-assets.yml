@@ -1,0 +1,21 @@
+name: Export Remotion Common Assets
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/export-remotion-assets.yml"
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: remotion-prototype
+      - uses: actions/upload-artifact@v4
+        with:
+          name: remotion-common-assets
+          path: |
+            remotion-video/public/character
+            remotion-video/public/common
+          retention-days: 1
+          compression-level: 0
