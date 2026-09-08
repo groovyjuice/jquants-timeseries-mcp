@@ -904,6 +904,229 @@ export const prepareFinalNarratedScenes = async ({
   };
 };
 
+
+export const prepareFinalNarratedScenesFromLocal = async ({
+  scenes,
+  manifestPath,
+  audioDir,
+  outputDir,
+  publicPrefix = 'generated',
+  fps = 30,
+  paddingFrames = 12,
+}) => {
+  if (!Array.isArray(scenes) || scenes.length === 0) {
+    throw new Error('scenes must be a non-empty array');
+  }
+  if (!manifestPath || !audioDir) {
+    throw new Error('manifestPath and audioDir are required');
+  }
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY is required for final-WAV subtitle alignment');
+  }
+
+  await mkdir(outputDir, {recursive: true});
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+  if (!Array.isArray(manifest?.slides) || !Array.isArray(manifest?.segments)) {
+    throw new Error('Final audio manifest is missing slides or segments');
+  }
+  if (manifest.slides.length !== scenes.length) {
+    throw new Error(
+      'Final audio manifest slide count mismatch: manifest=' +
+        manifest.slides.length +
+        ', scenes=' +
+        scenes.length,
+    );
+  }
+
+  const segmentsBySlide = new Map();
+  for (const segment of manifest.segments) {
+    if (!segmentsBySlide.has(segment.slide_id)) {
+      segmentsBySlide.set(segment.slide_id, []);
+    }
+    segmentsBySlide.get(segment.slide_id).push(segment);
+  }
+
+  const ffmpeg = await resolveFfmpegForFinalAudio();
+  const client = new OpenAI({apiKey: process.env.OPENAI_API_KEY});
+  const workDir = path.join(outputDir, 'final-audio-work-' + Date.now());
+  await mkdir(workDir, {recursive: true});
+
+  const prepared = [];
+  const generatedFiles = [];
+  const metrics = [];
+  let cursor = 0;
+
+  try {
+    for (let index = 0; index < scenes.length; index++) {
+      const scene = scenes[index];
+      const slideManifest = manifest.slides[index];
+      const expectedSlideId = 'slide_' + String(index + 1).padStart(3, '0');
+
+      if (slideManifest?.slide_id !== expectedSlideId) {
+        throw new Error(
+          'Final audio manifest order mismatch at index ' +
+            index +
+            ': expected ' +
+            expectedSlideId +
+            ', got ' +
+            String(slideManifest?.slide_id),
+        );
+      }
+      if (
+        scene.title &&
+        slideManifest.slide_title &&
+        scene.title !== slideManifest.slide_title
+      ) {
+        throw new Error(
+          'Final audio title mismatch for ' +
+            expectedSlideId +
+            ': scene=' +
+            scene.title +
+            ', manifest=' +
+            slideManifest.slide_title,
+        );
+      }
+
+      const segmentFiles = Array.isArray(slideManifest.segment_files)
+        ? slideManifest.segment_files
+        : [];
+      if (!segmentFiles.length) {
+        throw new Error('No final WAV segments for ' + expectedSlideId);
+      }
+
+      const localSegments = [];
+      for (const filename of segmentFiles) {
+        const localPath = path.join(audioDir, filename);
+        const info = await stat(localPath);
+        if (!info.isFile() || info.size <= 44) {
+          throw new Error('Final WAV file is missing or empty: ' + filename);
+        }
+        localSegments.push(localPath);
+      }
+
+      const finalFilename = 'final-' + expectedSlideId + '.wav';
+      const finalPath = path.join(outputDir, finalFilename);
+      if (localSegments.length === 1) {
+        await copyFile(localSegments[0], finalPath);
+      } else {
+        const concatPath = path.join(workDir, expectedSlideId + '-concat.txt');
+        await writeFile(
+          concatPath,
+          localSegments.map((p) => "file '" + p + "'").join('\n') + '\n',
+          'utf8',
+        );
+        await execFileAsync(
+          ffmpeg,
+          [
+            '-y',
+            '-f',
+            'concat',
+            '-safe',
+            '0',
+            '-i',
+            concatPath,
+            '-c:a',
+            'pcm_s16le',
+            finalPath,
+          ],
+          {maxBuffer: 10 * 1024 * 1024},
+        );
+      }
+
+      const audioBuffer = await readFile(finalPath);
+      const analysis = buildMouthCuesFromWav(audioBuffer, fps);
+      const narration = String(scene.narration || scene.body || '').trim();
+
+      const manifestDisplay = (segmentsBySlide.get(expectedSlideId) || [])
+        .sort((a, b) => Number(a.segment_no || 0) - Number(b.segment_no || 0))
+        .map((segment) => String(segment.display_text || ''))
+        .join('');
+      if (
+        compactComparableText(narration) !==
+        compactComparableText(manifestDisplay)
+      ) {
+        throw new Error('Final WAV narration text mismatch for ' + expectedSlideId);
+      }
+
+      const aligned = await alignSubtitlesToAudio({
+        client,
+        audioBuffer,
+        displayText: narration,
+        durationSeconds: analysis.durationSeconds,
+        fps,
+      });
+
+      const result = {
+        path: finalPath,
+        bytes: audioBuffer.length,
+        subtitleCues: aligned.subtitleCues,
+        subtitleAlignment: aligned.subtitleAlignment,
+        ...analysis,
+      };
+      const syncQa = validateSceneSync({
+        result,
+        fps,
+        paddingFrames,
+        sceneIndex: index,
+      });
+
+      const expectedDuration = Number(slideManifest.duration_sec || 0);
+      if (
+        expectedDuration > 0 &&
+        Math.abs(analysis.durationSeconds - expectedDuration) > 0.15
+      ) {
+        throw new Error(
+          'Final WAV duration mismatch for ' +
+            expectedSlideId +
+            ': wav=' +
+            analysis.durationSeconds.toFixed(3) +
+            ', manifest=' +
+            expectedDuration.toFixed(3),
+        );
+      }
+
+      const duration = Math.ceil(analysis.durationSeconds * fps) + paddingFrames;
+      prepared.push({
+        ...scene,
+        from: cursor,
+        duration,
+        narration,
+        audioSrc: publicPrefix + '/' + finalFilename,
+        mouthCues: analysis.mouthCues,
+        subtitleCues: aligned.subtitleCues,
+      });
+      generatedFiles.push(finalPath);
+      metrics.push({
+        index,
+        slideId: expectedSlideId,
+        durationSeconds: analysis.durationSeconds,
+        durationFrames: duration,
+        subtitleAlignment: aligned.subtitleAlignment,
+        syncQa,
+        sourceSegmentCount: segmentFiles.length,
+      });
+      cursor += duration;
+    }
+  } finally {
+    await rm(workDir, {recursive: true, force: true}).catch(() => {});
+  }
+
+  return {
+    scenes: prepared,
+    generatedFiles,
+    metrics,
+    totalFrames: cursor,
+    finalAudioManifest: {
+      manifestPath,
+      audioDir,
+      slideCount: manifest.slides.length,
+      segmentCount: manifest.segments.length,
+      sourceTotalDurationSec: Number(manifest.total_duration_sec || 0),
+    },
+  };
+};
+
+
 export const prepareNarratedScenes = async ({
   scenes,
   outputDir,
