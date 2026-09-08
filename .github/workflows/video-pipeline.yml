@@ -52,7 +52,7 @@ jobs:
           tar -tzf render-package.tar.gz | grep -q './props.json'
           tar -tzf render-package.tar.gz | grep -q './publish/publish_metadata.json'
 
-      - name: Verify Howa project identity
+      - name: Verify Oncolys project identity
         shell: bash
         run: |
           set -euo pipefail
@@ -67,11 +67,11 @@ jobs:
           titles = meta.get("title_candidates") or []
           desc = str(meta.get("description") or "")
           haystack = "\n".join(map(str, titles)) + "\n" + desc
-          if len(scenes) != 43:
+          if len(scenes) != 51:
               raise SystemExit(f"Unexpected scene count: {len(scenes)}")
-          if "豊和工業" not in haystack:
-              raise SystemExit("Render package is not the rebuilt Howa Kogyo project")
-          print("Verified rebuilt Howa package: scenes=43")
+          if "オンコリス" not in haystack:
+              raise SystemExit("Render package is not the Oncolys BioPharma project")
+          print("Verified Oncolys package: scenes=51")
           PY
 
       - name: Upload package once
@@ -325,7 +325,7 @@ jobs:
       - name: Upload complete delivery package
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.project_key || 'howa-6203-rebuild' }}-delivery
+          name: ${{ inputs.project_key || 'oncolys-4588' }}-delivery
           path: delivery/
           retention-days: 7
           compression-level: 0
