@@ -11,6 +11,7 @@ import {generatePublishMetadata, applyChaptersToPublishMetadata} from './publish
 import {
   getTtsConfig,
   prepareNarratedScenes,
+  prepareFinalNarratedScenes,
   synthesizeNarration,
 } from './tts.mjs';
 
@@ -608,6 +609,32 @@ const buildNarratedProps = async (props, jobId) => {
 
 
 
+
+const buildFinalAudioProps = async ({
+  props,
+  audioFolderId,
+  manifestFileId,
+}) => {
+  const prepared = await prepareFinalNarratedScenes({
+    scenes: props.scenes,
+    audioFolderId,
+    manifestFileId,
+    outputDir: generatedAudioDir,
+    publicPrefix: 'generated',
+    fps: 30,
+    paddingFrames: 12,
+  });
+
+  return {
+    ...prepared,
+    props: {
+      ...props,
+      scenes: prepared.scenes,
+    },
+  };
+};
+
+
 const createRenderPackage = async ({
   projectDir,
   prepared,
@@ -684,6 +711,10 @@ const autoRenderConfiguredProject = async () => {
   const slidesFolderId = process.env.AUTO_PROJECT_SLIDES_FOLDER_ID;
   const endingSlideFileId = process.env.AUTO_PROJECT_ENDING_SLIDE_FILE_ID;
   const spritePlanFileId = process.env.AUTO_PROJECT_SPRITE_PLAN_FILE_ID;
+  const finalAudioFolderId = process.env.AUTO_PROJECT_AUDIO_FOLDER_ID;
+  const finalAudioManifestFileId =
+    process.env.AUTO_PROJECT_AUDIO_MANIFEST_FILE_ID;
+  const useFinalAudio = process.env.AUTO_PROJECT_USE_FINAL_AUDIO === '1';
   const outputFilename =
     process.env.AUTO_PROJECT_OUTPUT_FILENAME || 'project-output.mp4';
 
@@ -796,13 +827,36 @@ const autoRenderConfiguredProject = async () => {
     }
 
     console.log(
-      `Auto project render: loaded ${project.props.scenes.length} slides; starting TTS and publish metadata`,
+      `Auto project render: loaded ${project.props.scenes.length} slides; preparing audio sync and publish metadata`,
     );
     const props = validateProps(project.props);
     const publishDir = path.join(projectDir, 'publish');
 
+    if (
+      useFinalAudio &&
+      (!finalAudioFolderId || !finalAudioManifestFileId)
+    ) {
+      throw new Error(
+        'Final-audio mode requires AUTO_PROJECT_AUDIO_FOLDER_ID and AUTO_PROJECT_AUDIO_MANIFEST_FILE_ID',
+      );
+    }
+
+    const audioPreparation = useFinalAudio
+      ? buildFinalAudioProps({
+          props,
+          audioFolderId: finalAudioFolderId,
+          manifestFileId: finalAudioManifestFileId,
+        })
+      : buildNarratedProps(props, jobId);
+
+    console.log(
+      useFinalAudio
+        ? 'Auto project render: using user-completed final WAV files; TTS generation is disabled'
+        : 'Auto project render: legacy TTS mode enabled',
+    );
+
     const [prepared, publishMetadata] = await Promise.all([
-      buildNarratedProps(props, jobId),
+      audioPreparation,
       generatePublishMetadata({
         plan: project.plan,
         outputDir: publishDir,
@@ -821,7 +875,7 @@ const autoRenderConfiguredProject = async () => {
       });
 
     console.log(
-      `Auto project render: TTS complete, totalFrames=${prepared.totalFrames}; publish metadata titles=${finalizedPublishMetadata.title_candidates.length}; chapters=${finalizedPublishMetadata.chapters.length}; creating render package`,
+      `Auto project render: audio sync complete, totalFrames=${prepared.totalFrames}; publish metadata titles=${finalizedPublishMetadata.title_candidates.length}; chapters=${finalizedPublishMetadata.chapters.length}; creating render package`,
     );
     await createRenderPackage({
       projectDir,
