@@ -600,9 +600,7 @@ const validateSceneSync = ({
   }
 
   if (
-    !['word-timestamps', 'manifest-segment-timestamps'].includes(
-      result.subtitleAlignment,
-    ) &&
+    result.subtitleAlignment !== 'word-timestamps' &&
     process.env.ALLOW_SUBTITLE_FALLBACK !== '1'
   ) {
     throw new Error(
@@ -766,6 +764,11 @@ export const prepareFinalNarratedScenes = async ({
   const sourceDir = path.join(outputDir, 'final-audio-source-' + Date.now());
   await mkdir(sourceDir, {recursive: true});
   const ffmpeg = await resolveFfmpegForFinalAudio();
+  const alignmentClient =
+    process.env.OPENAI_API_KEY && process.env.OPENAI_ALIGNMENT_ENABLED !== '0'
+      ? new OpenAI({apiKey: process.env.OPENAI_API_KEY})
+      : null;
+  let alignmentUnavailable = !alignmentClient;
 
   const prepared = [];
   const generatedFiles = [];
@@ -872,22 +875,43 @@ export const prepareFinalNarratedScenes = async ({
         );
       }
 
-      const audioFrames = Math.max(
-        1,
-        Math.ceil(analysis.durationSeconds * fps),
-      );
-      const subtitleCues = await buildFinalSegmentSubtitleCues({
-        segmentPaths: localSegments,
-        segmentRecords: slideSegments,
-        fps,
-        finalAudioFrames: audioFrames,
-      });
+      let subtitleCues;
+      let subtitleAlignment;
+
+      if (!alignmentUnavailable && alignmentClient) {
+        try {
+          const aligned = await alignSubtitlesToAudio({
+            client: alignmentClient,
+            audioBuffer,
+            displayText: narration,
+            durationSeconds: analysis.durationSeconds,
+            fps,
+          });
+          subtitleCues = aligned.subtitleCues;
+          subtitleAlignment = aligned.subtitleAlignment;
+        } catch (error) {
+          alignmentUnavailable = true;
+          console.warn(
+            'Final WAV word timestamps unavailable; using master-approved duration fallback for this and remaining scenes:',
+            String(error),
+          );
+        }
+      }
+
+      if (!subtitleCues) {
+        subtitleCues = buildFallbackSubtitleCues({
+          text: narration,
+          durationSeconds: analysis.durationSeconds,
+          fps,
+        });
+        subtitleAlignment = 'duration-fallback';
+      }
 
       const result = {
         path: finalPath,
         bytes: audioBuffer.length,
         subtitleCues,
-        subtitleAlignment: 'manifest-segment-timestamps',
+        subtitleAlignment,
         ...analysis,
       };
       const syncQa = validateSceneSync({
@@ -928,7 +952,7 @@ export const prepareFinalNarratedScenes = async ({
         slideId: expectedSlideId,
         durationSeconds: analysis.durationSeconds,
         durationFrames: duration,
-        subtitleAlignment: 'manifest-segment-timestamps',
+        subtitleAlignment,
         syncQa,
         sourceSegmentCount: segmentFiles.length,
       });
@@ -992,6 +1016,11 @@ export const prepareFinalNarratedScenesFromLocal = async ({
   }
 
   const ffmpeg = await resolveFfmpegForFinalAudio();
+  const alignmentClient =
+    process.env.OPENAI_API_KEY && process.env.OPENAI_ALIGNMENT_ENABLED !== '0'
+      ? new OpenAI({apiKey: process.env.OPENAI_API_KEY})
+      : null;
+  let alignmentUnavailable = !alignmentClient;
   const workDir = path.join(outputDir, 'final-audio-work-' + Date.now());
   await mkdir(workDir, {recursive: true});
 
@@ -1093,22 +1122,43 @@ export const prepareFinalNarratedScenesFromLocal = async ({
         throw new Error('Final WAV narration text mismatch for ' + expectedSlideId);
       }
 
-      const audioFrames = Math.max(
-        1,
-        Math.ceil(analysis.durationSeconds * fps),
-      );
-      const subtitleCues = await buildFinalSegmentSubtitleCues({
-        segmentPaths: localSegments,
-        segmentRecords: slideSegments,
-        fps,
-        finalAudioFrames: audioFrames,
-      });
+      let subtitleCues;
+      let subtitleAlignment;
+
+      if (!alignmentUnavailable && alignmentClient) {
+        try {
+          const aligned = await alignSubtitlesToAudio({
+            client: alignmentClient,
+            audioBuffer,
+            displayText: narration,
+            durationSeconds: analysis.durationSeconds,
+            fps,
+          });
+          subtitleCues = aligned.subtitleCues;
+          subtitleAlignment = aligned.subtitleAlignment;
+        } catch (error) {
+          alignmentUnavailable = true;
+          console.warn(
+            'Final WAV word timestamps unavailable; using master-approved duration fallback for this and remaining scenes:',
+            String(error),
+          );
+        }
+      }
+
+      if (!subtitleCues) {
+        subtitleCues = buildFallbackSubtitleCues({
+          text: narration,
+          durationSeconds: analysis.durationSeconds,
+          fps,
+        });
+        subtitleAlignment = 'duration-fallback';
+      }
 
       const result = {
         path: finalPath,
         bytes: audioBuffer.length,
         subtitleCues,
-        subtitleAlignment: 'manifest-segment-timestamps',
+        subtitleAlignment,
         ...analysis,
       };
       const syncQa = validateSceneSync({
@@ -1149,7 +1199,7 @@ export const prepareFinalNarratedScenesFromLocal = async ({
         slideId: expectedSlideId,
         durationSeconds: analysis.durationSeconds,
         durationFrames: duration,
-        subtitleAlignment: 'manifest-segment-timestamps',
+        subtitleAlignment,
         syncQa,
         sourceSegmentCount: segmentFiles.length,
       });
