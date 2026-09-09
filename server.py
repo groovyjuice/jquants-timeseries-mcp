@@ -119,6 +119,40 @@ async def download_csv(request: Request) -> Response:
     )
 
 
+@mcp.custom_route("/oneoff-export-9984/{token}", methods=["GET"])
+async def oneoff_export_9984(request: Request) -> Response:
+    expected = os.environ.get("TEMP_EXPORT_TOKEN", "").strip()
+    provided = request.path_params["token"]
+    if not expected or not secrets.compare_digest(provided, expected):
+        return PlainTextResponse("not found", status_code=404)
+    try:
+        client = JQuantsClient(os.environ.get("JQUANTS_API_KEY", ""))
+        candidates = client.search_companies("9984", limit=10)
+        if not candidates:
+            return PlainTextResponse("not found", status_code=404)
+        best_rank = candidates[0].rank
+        best = [candidate for candidate in candidates if candidate.rank == best_rank]
+        if len(best) != 1:
+            return PlainTextResponse("ambiguous", status_code=409)
+        company = best[0]
+        minute_rows = client.get_minute_bars(
+            company.code,
+            from_date="2025-01-06",
+            to_date="2026-09-08",
+        )
+        rows = aggregate_minute_bars_30m(minute_rows)
+        if not rows:
+            return PlainTextResponse("no data", status_code=404)
+        csv_text = intraday_bars_to_csv(rows, company.name)
+        return Response(
+            csv_text.encode("utf-8"),
+            media_type="text/csv; charset=utf-8",
+            headers={"Cache-Control": "private, no-store"},
+        )
+    except JQuantsError as exc:
+        return PlainTextResponse(str(exc), status_code=502)
+
+
 def _plain_result(payload: dict[str, Any]) -> CallToolResult:
     return CallToolResult(
         content=[TextContent(text=str(payload.get("message") or payload["status"]))],
