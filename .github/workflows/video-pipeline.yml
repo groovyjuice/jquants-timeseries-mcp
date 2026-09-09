@@ -4,54 +4,152 @@ on:
   workflow_dispatch:
     inputs:
       project_key:
-        description: "Short project key for artifact naming"
+        description: "Project key used for artifact naming"
+        required: true
+        type: string
+      video_plan_file_id:
+        description: "Google Drive file ID for 01_script/video_plan.json"
+        required: true
+        type: string
+      slides_folder_id:
+        description: "Google Drive folder ID for 02_slides"
+        required: true
+        type: string
+      audio_folder_id:
+        description: "Google Drive folder ID for 03_audio"
+        required: true
+        type: string
+      audio_manifest_file_id:
+        description: "Google Drive file ID for 03_audio/manifest.json"
+        required: true
+        type: string
+      ending_slide_file_id:
+        description: "Google Drive file ID for common ending slide"
+        required: true
+        type: string
+      output_filename:
+        description: "Internal output filename"
         required: false
-        default: "video-project"
+        default: "project-output.mp4"
+        type: string
       segment_count:
-        description: "Parallel render segment count"
+        description: "Parallel Remotion segment count"
         required: false
         default: "12"
+        type: string
+
+permissions:
+  contents: read
+
 jobs:
   prepare:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
+    outputs:
+      segments: ${{ steps.matrix.outputs.segments }}
+      segment_count: ${{ steps.matrix.outputs.segment_count }}
+    env:
+      PIPELINE_WORKER_MODE: "1"
+      PIPELINE_DRIVE_PROJECT: "1"
+      PIPELINE_PACKAGE_ONLY: "1"
+      AUTO_PROJECT_USE_FINAL_AUDIO: "1"
+      AUTO_PROJECT_VIDEO_PLAN_FILE_ID: ${{ inputs.video_plan_file_id }}
+      AUTO_PROJECT_SLIDES_FOLDER_ID: ${{ inputs.slides_folder_id }}
+      AUTO_PROJECT_ENDING_SLIDE_FILE_ID: ${{ inputs.ending_slide_file_id }}
+      AUTO_PROJECT_AUDIO_FOLDER_ID: ${{ inputs.audio_folder_id }}
+      AUTO_PROJECT_AUDIO_MANIFEST_FILE_ID: ${{ inputs.audio_manifest_file_id }}
+      AUTO_PROJECT_OUTPUT_FILENAME: ${{ inputs.output_filename }}
+      PIPELINE_REPO_PROJECT: "0"
+      PIPELINE_REPO_SPRITE: "0"
+      PIPELINE_USE_BUNDLED_PROJECT: "0"
+      GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+      GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+      GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+      GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
     steps:
-      - name: Download verified latest render package
+      - name: Checkout render code
+        uses: actions/checkout@v4
+        with:
+          ref: remotion-prototype
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build render matrix
+        id: matrix
         shell: bash
         run: |
           set -euo pipefail
-          URL="https://remotion-video-prototype.onrender.com/render-package.tar.gz"
-          for i in $(seq 1 30); do
-            echo "Package attempt $i"
-            rm -f render-package.tar.gz render-package.tmp
-            CODE=$(curl -L -sS --connect-timeout 20 --max-time 300 \
-              --retry 4 --retry-delay 3 --retry-all-errors \
-              -o render-package.tmp -w "%{http_code}" "$URL" || true)
-            SIZE=$(stat -c%s render-package.tmp 2>/dev/null || echo 0)
-            echo "HTTP=$CODE size=$SIZE"
-            if [ "$CODE" = "200" ] && [ "$SIZE" -gt 1000000 ]; then
-              if gzip -t render-package.tmp && tar -tzf render-package.tmp >/dev/null; then
-                mv render-package.tmp render-package.tar.gz
-                echo "Verified package ready."
-                exit 0
-              fi
-            fi
-            rm -f render-package.tmp
-            sleep 10
-          done
-          exit 1
+          COUNT="${{ inputs.segment_count }}"
+          python - "$COUNT" >> "$GITHUB_OUTPUT" <<'PY'
+          import json, sys
+          count = int(sys.argv[1])
+          if not 1 <= count <= 24:
+              raise SystemExit("segment_count must be between 1 and 24")
+          print("segments=" + json.dumps(list(range(count)), separators=(",", ":")))
+          print("segment_count=" + str(count))
+          PY
+
+      - name: Verify Google Drive authentication configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${GOOGLE_SERVICE_ACCOUNT_JSON:-}" ]; then
+            echo "Google Drive auth: service account"
+          elif [ -n "${GOOGLE_CLIENT_ID:-}" ] && [ -n "${GOOGLE_CLIENT_SECRET:-}" ] && [ -n "${GOOGLE_REFRESH_TOKEN:-}" ]; then
+            echo "Google Drive auth: OAuth refresh token"
+          else
+            echo "Google Drive authentication is not configured." >&2
+            echo "Set GOOGLE_SERVICE_ACCOUNT_JSON, or GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET + GOOGLE_REFRESH_TOKEN, in GitHub Actions Secrets." >&2
+            exit 1
+          fi
+
+      - name: Cache npm download directory
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('remotion-video/package.json') }}
+          restore-keys: |
+            npm-${{ runner.os }}-
+
+      - name: Install dependencies
+        working-directory: remotion-video
+        run: npm install --ignore-scripts --prefer-offline
+
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+
+      - name: Build synchronized render package directly from Google Drive
+        working-directory: remotion-video
+        run: node server.mjs
 
       - name: Verify package contents
+        working-directory: remotion-video
+        shell: bash
         run: |
-          tar -tzf render-package.tar.gz | grep -q './props.json'
-          tar -tzf render-package.tar.gz | grep -q './publish/publish_metadata.json'
+          set -euo pipefail
+          PACKAGE="out/render-package.tar.gz"
+          test -f "$PACKAGE"
+          test "$(stat -c%s "$PACKAGE")" -gt 1000000
+          gzip -t "$PACKAGE"
+          tar -tzf "$PACKAGE" > out/render-package-list.txt
+          grep -Fxq './props.json' out/render-package-list.txt
+          grep -Fxq './publish/publish_metadata.json' out/render-package-list.txt
+          grep -q '^./public/generated/' out/render-package-list.txt
+          echo "render_package_bytes=$(stat -c%s "$PACKAGE")"
 
-      - name: Upload package once
+      - name: Upload verified package once
         uses: actions/upload-artifact@v4
         with:
           name: pipeline-render-package
-          path: render-package.tar.gz
-          retention-days: 1
+          path: remotion-video/out/render-package.tar.gz
+          retention-days: 2
           compression-level: 0
 
   render:
@@ -61,11 +159,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        segment: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+        segment: ${{ fromJSON(needs.prepare.outputs.segments) }}
     env:
       NODE_OPTIONS: --max-old-space-size=4096
+
     steps:
-      - name: Checkout render branch
+      - name: Checkout render code
         uses: actions/checkout@v4
         with:
           ref: remotion-prototype
@@ -104,30 +203,24 @@ jobs:
       - name: Build segment props
         working-directory: remotion-video
         run: |
-          node segment-props.mjs props.json "${{ matrix.segment }}" 12 segment-props.json
+          node segment-props.mjs props.json "${{ matrix.segment }}" "${{ needs.prepare.outputs.segment_count }}" segment-props.json
 
       - name: Render segment
-        working-directory: remotion-video
-        run: |
-          N=$(printf "%02d" $((${{ matrix.segment }} + 1)))
-          mkdir -p out
-          npx remotion render src/index.tsx TestVideo "out/segment-${N}-raw.mp4" \
-            --codec=h264 \
-            --concurrency=2 \
-            --props=segment-props.json
-
-      - name: Compress segment with CRF quality mode
         working-directory: remotion-video
         shell: bash
         run: |
           set -euo pipefail
           N=$(printf "%02d" $((${{ matrix.segment }} + 1)))
-          ffmpeg -y -i "out/segment-${N}-raw.mp4" \
-            -c:v libx264 -preset medium -crf 19 \
-            -pix_fmt yuv420p \
-            -c:a aac -b:a 128k \
-            -movflags +faststart \
-            "out/segment-${N}.mp4"
+          mkdir -p out
+          npx remotion render src/index.tsx TestVideo "out/segment-${N}-raw.mp4"             --codec=h264             --concurrency=2             --props=segment-props.json
+
+      - name: Encode segment in quality mode
+        working-directory: remotion-video
+        shell: bash
+        run: |
+          set -euo pipefail
+          N=$(printf "%02d" $((${{ matrix.segment }} + 1)))
+          ffmpeg -y -i "out/segment-${N}-raw.mp4"             -c:v libx264 -preset medium -crf 19             -pix_fmt yuv420p             -c:a aac -b:a 128k             -movflags +faststart             "out/segment-${N}.mp4"
           rm -f "out/segment-${N}-raw.mp4"
           ffprobe -v error "out/segment-${N}.mp4" >/dev/null
 
@@ -136,23 +229,33 @@ jobs:
         with:
           name: pipeline-segment-${{ matrix.segment }}
           path: remotion-video/out/segment-*.mp4
-          retention-days: 1
+          retention-days: 2
           compression-level: 0
 
   finalize:
-    needs: render
+    needs: [prepare, render]
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 40
     env:
       UPLOAD_POST_API_KEY: ${{ secrets.UPLOAD_POST_API_KEY }}
       UPLOAD_POST_USER: ${{ secrets.UPLOAD_POST_USER }}
       YOUTUBE_CATEGORY_ID: "25"
       YOUTUBE_DRAFT_TITLE: "【下書き】タイトルを設定してください"
+
     steps:
       - name: Checkout common assets
         uses: actions/checkout@v4
         with:
           ref: remotion-prototype
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install upload dependencies
+        working-directory: remotion-video
+        run: npm install --ignore-scripts --prefer-offline
 
       - name: Install ffmpeg
         run: |
@@ -183,14 +286,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          EXPECTED="${{ needs.prepare.outputs.segment_count }}"
           COUNT=$(find segments -maxdepth 1 -name 'segment-*.mp4' | wc -l)
-          echo "segment_count=$COUNT"
-          test "$COUNT" -eq 12
+          echo "segment_count=$COUNT expected=$EXPECTED"
+          test "$COUNT" -eq "$EXPECTED"
           : > concat.txt
-          for f in $(find segments -maxdepth 1 -name 'segment-*.mp4' | sort); do
+          while IFS= read -r f; do
             ffprobe -v error "$f" >/dev/null
             echo "file '$PWD/$f'" >> concat.txt
-          done
+          done < <(find segments -maxdepth 1 -name 'segment-*.mp4' | sort)
           ffmpeg -y -f concat -safe 0 -i concat.txt -c copy narration-video.mp4
 
       - name: Mix BGM and normalize loudness
@@ -200,17 +304,11 @@ jobs:
           DURATION=$(ffprobe -v error -show_entries format=duration -of csv=p=0 narration-video.mp4)
           FADE_OUT_START=$(awk -v d="$DURATION" 'BEGIN {x=d-1.5; if(x<0)x=0; printf "%.3f", x}')
           BGM="remotion-video/public/common/bgm/main_bgm.mp3"
+          test -f "$BGM"
 
-          ffmpeg -y \
-            -i narration-video.mp4 \
-            -stream_loop -1 -i "$BGM" \
-            -filter_complex "[1:a]volume=0.025,afade=t=in:st=0:d=1,afade=t=out:st=${FADE_OUT_START}:d=1.5[bgm];[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=0[mix];[mix]loudnorm=I=-15:LRA=7:TP=-1[a]" \
-            -map 0:v:0 -map "[a]" \
-            -c:v copy -c:a aac -b:a 128k -shortest \
-            -movflags +faststart \
-            final_video.mp4
+          ffmpeg -y             -i narration-video.mp4             -stream_loop -1 -i "$BGM"             -filter_complex "[1:a]volume=0.025,afade=t=in:st=0:d=1,afade=t=out:st=${FADE_OUT_START}:d=1.5[bgm];[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=0[mix];[mix]loudnorm=I=-15:LRA=7:TP=-1[a]"             -map 0:v:0 -map "[a]"             -c:v copy -c:a aac -b:a 128k -ar 48000 -ac 2 -shortest             -movflags +faststart             final_video.mp4
 
-      - name: Verify final media
+      - name: Verify final media and full decode
         shell: bash
         run: |
           set -euo pipefail
@@ -218,30 +316,52 @@ jobs:
           echo "bytes=$SIZE"
           test "$SIZE" -gt 1000000
 
-          ffprobe -v error \
-            -show_entries format=duration,size,bit_rate \
-            -of default=noprint_wrappers=1 \
-            final_video.mp4 > publish/media_info.txt
-
-          ffmpeg -hide_banner -i final_video.mp4 \
-            -af loudnorm=I=-15:LRA=7:TP=-1:print_format=json \
-            -f null - 2> loudness.txt || true
+          ffprobe -v error             -show_entries format=duration,size,bit_rate             -show_entries stream=index,codec_type,codec_name,width,height,avg_frame_rate,sample_rate,channels             -of json final_video.mp4 > publish/media_info.json
 
           python - <<'PY'
-          import json, re
-          text = open('loudness.txt', encoding='utf-8', errors='ignore').read()
-          matches = re.findall(r'\{\s*"input_i".*?\}', text, re.S)
+          import json
+          data=json.load(open("publish/media_info.json",encoding="utf-8"))
+          streams=data.get("streams",[])
+          v=next((s for s in streams if s.get("codec_type")=="video"),None)
+          a=next((s for s in streams if s.get("codec_type")=="audio"),None)
+          assert v, "video stream missing"
+          assert a, "audio stream missing"
+          assert v.get("codec_name")=="h264", v
+          assert (v.get("width"),v.get("height"))==(1920,1080), v
+          rate=v.get("avg_frame_rate","0/1")
+          num,den=map(float,rate.split("/"))
+          assert den and abs(num/den-30)<0.01, v
+          assert a.get("codec_name")=="aac", a
+          assert str(a.get("sample_rate"))=="48000", a
+          assert int(a.get("channels",0))==2, a
+          print("media stream QA passed")
+          PY
+
+          ffmpeg -v error -i final_video.mp4 -f null - 2> publish/decode-errors.txt
+          test ! -s publish/decode-errors.txt
+
+      - name: Measure loudness
+        shell: bash
+        run: |
+          set -euo pipefail
+          ffmpeg -hide_banner -i final_video.mp4             -af loudnorm=I=-15:LRA=7:TP=-1:print_format=json             -f null - 2> loudness.txt || true
+
+          python - <<'PY'
+          import json,re
+          text=open("loudness.txt",encoding="utf-8",errors="ignore").read()
+          matches=re.findall(r'\{\s*"input_i".*?\}',text,re.S)
           if not matches:
               raise SystemExit("Could not parse loudness measurement")
-          data = json.loads(matches[-1])
-          i = float(data["input_i"])
-          tp = float(data["input_tp"])
-          with open("publish/loudness.txt", "w", encoding="utf-8") as f:
+          data=json.loads(matches[-1])
+          i=float(data["input_i"])
+          tp=float(data["input_tp"])
+          with open("publish/loudness.txt","w",encoding="utf-8") as f:
               f.write(f"integrated_lufs={i}\ntrue_peak_dbtp={tp}\n")
           if not (-16.0 <= i <= -14.0):
               raise SystemExit(f"Integrated loudness out of range: {i}")
           if tp > -0.5:
               raise SystemExit(f"True peak too high: {tp}")
+          print(f"loudness QA passed: I={i}, TP={tp}")
           PY
 
       - name: Require Upload-Post credentials
@@ -255,10 +375,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node remotion-video/upload-post-youtube.mjs \
-            final_video.mp4 \
-            publish/publish_metadata.json \
-            publish/youtube_upload.json
+          node remotion-video/upload-post-youtube.mjs             final_video.mp4             publish/publish_metadata.json             publish/youtube_upload.json
 
       - name: Verify YouTube draft result
         shell: bash
@@ -266,14 +383,13 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           import json
-          p = "publish/youtube_upload.json"
-          data = json.load(open(p, encoding="utf-8"))
+          data=json.load(open("publish/youtube_upload.json",encoding="utf-8"))
           assert data["video_id"], "Missing YouTube video id"
-          assert data["privacy_status"] == "private", data
+          assert data["privacy_status"]=="private", data
           assert data["description_set"] is True, data
-          assert data["tag_count"] > 0, data
-          print("video_id=" + data["video_id"])
-          print("studio_edit_url=" + data["studio_edit_url"])
+          assert data["tag_count"]>0, data
+          print("video_id="+data["video_id"])
+          print("studio_edit_url="+data["studio_edit_url"])
           PY
 
       - name: Assemble delivery folder
