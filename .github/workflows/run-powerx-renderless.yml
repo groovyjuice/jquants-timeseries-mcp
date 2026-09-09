@@ -1,0 +1,22 @@
+name: Run PowerX Renderless
+
+on:
+  push:
+    branches:
+      - run-powerx-renderless-20260909
+    paths:
+      - .github/workflows/run-powerx-renderless.yml
+
+jobs:
+  run:
+    uses: groovyjuice/jquants-timeseries-mcp/.github/workflows/video-pipeline.yml@remotion-prototype
+    with:
+      project_key: "2026-09-09_パワーエックス_485A_一時ストップ高と成長期待"
+      video_plan_file_id: "16is7dhtehmj32EshrBJBuY6h7PjIgtLG"
+      slides_folder_id: "1I24VrKRVWWnAwGdHz9H1ZV5qEM4Qt2xm"
+      audio_folder_id: "1knDvDVtOwq7PLwn9vbZTWD9KIiXsfpGB"
+      audio_manifest_file_id: "1o5_VqQReX2IZDGXVT_GmcXTpde12JTrm"
+      ending_slide_file_id: "1E_g376FHQOt0M7c6gAJAjpNOCnKVpj0k"
+      output_filename: "powerx-485a-20260909.mp4"
+      segment_count: "12"
+    secrets: inherit
