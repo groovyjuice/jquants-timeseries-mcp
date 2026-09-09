@@ -37,9 +37,34 @@ on:
         required: false
         default: "12"
         type: string
-
-permissions:
-  contents: read
+  workflow_call:
+    inputs:
+      project_key:
+        required: true
+        type: string
+      video_plan_file_id:
+        required: true
+        type: string
+      slides_folder_id:
+        required: true
+        type: string
+      audio_folder_id:
+        required: true
+        type: string
+      audio_manifest_file_id:
+        required: true
+        type: string
+      ending_slide_file_id:
+        required: true
+        type: string
+      output_filename:
+        required: false
+        default: "project-output.mp4"
+        type: string
+      segment_count:
+        required: false
+        default: "12"
+        type: string
 
 jobs:
   prepare:
