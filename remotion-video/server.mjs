@@ -886,7 +886,7 @@ const autoRenderConfiguredProject = async () => {
     });
 
     console.log(
-      'Auto project render: using user-completed final WAV files; Render-side TTS generation is disabled',
+      'Auto project pipeline: using user-completed final WAV files; pipeline-side TTS generation is disabled',
     );
 
     const [prepared, publishMetadata] = await Promise.all([
