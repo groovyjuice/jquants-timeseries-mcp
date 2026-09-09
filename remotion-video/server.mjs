@@ -726,12 +726,14 @@ const createRenderPackage = async ({
 };
 
 const autoRenderConfiguredProject = async () => {
-  const useRepoPlan = process.env.AUTO_RENDER_REPO_PROJECT === '1';
-  const useRepoSprite = process.env.AUTO_RENDER_REPO_SPRITE === '1';
+  const useRepoPlan =
+    (process.env.PIPELINE_REPO_PROJECT ?? process.env.AUTO_RENDER_REPO_PROJECT) === '1';
+  const useRepoSprite =
+    (process.env.PIPELINE_REPO_SPRITE ?? process.env.AUTO_RENDER_REPO_SPRITE) === '1';
   if (
     !useRepoPlan &&
     !useRepoSprite &&
-    process.env.AUTO_RENDER_DRIVE_PROJECT !== '1'
+    (process.env.PIPELINE_DRIVE_PROJECT ?? process.env.AUTO_RENDER_DRIVE_PROJECT) !== '1'
   ) return;
 
   const videoPlanFileId = process.env.AUTO_PROJECT_VIDEO_PLAN_FILE_ID;
@@ -829,7 +831,10 @@ const autoRenderConfiguredProject = async () => {
         outputDir: projectDir,
         publicPrefix,
       });
-    } else if (process.env.AUTO_RENDER_USE_BUNDLED_PROJECT === '1') {
+    } else if (
+      (process.env.PIPELINE_USE_BUNDLED_PROJECT ??
+        process.env.AUTO_RENDER_USE_BUNDLED_PROJECT) === '1'
+    ) {
       console.log('Auto project render: using explicitly enabled bundled project assets');
       await mkdir(projectDir, {recursive: true});
       await stat(bundlePath);
@@ -924,7 +929,9 @@ const autoRenderConfiguredProject = async () => {
     );
     console.log('Auto project render: resume checkpoint saved');
 
-    if (process.env.AUTO_RENDER_PACKAGE_ONLY === '1') {
+    if (
+      (process.env.PIPELINE_PACKAGE_ONLY ?? process.env.AUTO_RENDER_PACKAGE_ONLY) === '1'
+    ) {
       console.log('Auto project render: package-only mode complete');
       return;
     }
@@ -938,7 +945,8 @@ const autoRenderConfiguredProject = async () => {
     await unlink(renderResumeMarkerPath).catch(() => {});
     console.log(`AUTO PROJECT RENDER COMPLETE: ${output}`);
   } catch (error) {
-    console.error('AUTO PROJECT RENDER FAILED:', error);
+    console.error('AUTO PROJECT PIPELINE FAILED:', error);
+    throw error;
   } finally {
     await cleanupGenerated(generatedAudioFiles);
     if (projectDir) {
@@ -1505,15 +1513,15 @@ const server = http.createServer(async (req, res) => {
   res.end('Remotion prototype: authenticated API');
 });
 
-if (process.env.RENDER_WORKER_MODE === '1') {
-  console.log('Render worker mode: starting one-shot auto project job');
+if ((process.env.PIPELINE_WORKER_MODE ?? process.env.RENDER_WORKER_MODE) === '1') {
+  console.log('Pipeline worker mode: starting one-shot project job');
   autoRenderConfiguredProject()
     .then(() => {
-      console.log('Render worker mode: job finished');
+      console.log('Pipeline worker mode: job finished');
       process.exit(0);
     })
     .catch((error) => {
-      console.error('Render worker mode: job failed:', error);
+      console.error('Pipeline worker mode: job failed:', error);
       process.exit(1);
     });
 } else {
