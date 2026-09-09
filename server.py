@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import base64
 import re
 import secrets
 import time
@@ -71,6 +72,53 @@ mcp = MCPServer(
     instructions=SERVER_INSTRUCTIONS,
     version="1.3.0",
 )
+
+
+def _emit_oneoff_9984_csv() -> None:
+    if not os.environ.get("TEMP_EXPORT_TOKEN", "").strip():
+        return
+    try:
+        client = JQuantsClient(os.environ.get("JQUANTS_API_KEY", ""))
+        candidates = client.search_companies("9984", limit=10)
+        if not candidates:
+            print("ONEOFF9984_ERROR|not_found", flush=True)
+            return
+        best_rank = candidates[0].rank
+        best = [candidate for candidate in candidates if candidate.rank == best_rank]
+        if len(best) != 1:
+            print("ONEOFF9984_ERROR|ambiguous", flush=True)
+            return
+        company = best[0]
+        minute_rows = client.get_minute_bars(
+            company.code,
+            from_date="2025-01-06",
+            to_date="2026-09-08",
+        )
+        rows = aggregate_minute_bars_30m(minute_rows)
+        if not rows:
+            print("ONEOFF9984_ERROR|no_data", flush=True)
+            return
+        csv_text = intraday_bars_to_csv(rows, company.name)
+        encoded = base64.b64encode(csv_text.encode("utf-8")).decode("ascii")
+        chunk_size = 8000
+        total = (len(encoded) + chunk_size - 1) // chunk_size
+        print(
+            f"ONEOFF9984_META|{len(rows)}|{rows[0]['Date']}|{rows[-1]['Date']}|{total}",
+            flush=True,
+        )
+        for index in range(total):
+            start = index * chunk_size
+            end = start + chunk_size
+            print(
+                f"ONEOFF9984_CHUNK|{index + 1}|{total}|{encoded[start:end]}",
+                flush=True,
+            )
+        print("ONEOFF9984_DONE", flush=True)
+    except Exception as exc:
+        print(f"ONEOFF9984_ERROR|{type(exc).__name__}|{exc}", flush=True)
+
+
+_emit_oneoff_9984_csv()
 
 
 READ_ONLY = ToolAnnotations(
