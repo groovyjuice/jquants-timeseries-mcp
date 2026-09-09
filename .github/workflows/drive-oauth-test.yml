@@ -1,0 +1,58 @@
+name: Drive OAuth Test
+
+on:
+  push:
+    branches:
+      - drive-oauth-test-20260909
+    paths:
+      - .github/workflows/drive-oauth-test.yml
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+      GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+      GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+    steps:
+      - name: Verify OAuth secrets exist
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=0
+          for key in GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET GOOGLE_REFRESH_TOKEN; do
+            if [ -z "${!key:-}" ]; then
+              echo "::error::Missing GitHub Actions secret: $key"
+              missing=1
+            fi
+          done
+          test "$missing" -eq 0
+
+      - name: Exchange refresh token
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESPONSE=$(curl -sS --fail-with-body -X POST https://oauth2.googleapis.com/token             -d client_id="$GOOGLE_CLIENT_ID"             -d client_secret="$GOOGLE_CLIENT_SECRET"             -d refresh_token="$GOOGLE_REFRESH_TOKEN"             -d grant_type=refresh_token)
+          ACCESS_TOKEN=$(python -c 'import json,sys; print(json.load(sys.stdin)["access_token"])' <<<"$RESPONSE")
+          test -n "$ACCESS_TOKEN"
+          echo "::add-mask::$ACCESS_TOKEN"
+          echo "ACCESS_TOKEN=$ACCESS_TOKEN" >> "$GITHUB_ENV"
+          echo "OAuth token exchange succeeded"
+
+      - name: Verify Drive access to current PowerX video plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          HTTP=$(curl -sS -o drive.json -w "%{http_code}"             -H "Authorization: Bearer $ACCESS_TOKEN"             "https://www.googleapis.com/drive/v3/files/16is7dhtehmj32EshrBJBuY6h7PjIgtLG?fields=id,name,mimeType")
+          cat drive.json | python -c 'import json,sys; d=json.load(sys.stdin); print("Drive file:", d.get("name","<unknown>"))'
+          test "$HTTP" = "200"
+          python - <<'PY'
+          import json
+          d=json.load(open("drive.json",encoding="utf-8"))
+          assert d.get("id")=="16is7dhtehmj32EshrBJBuY6h7PjIgtLG", d
+          print("Google Drive OAuth access succeeded")
+          PY
