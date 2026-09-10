@@ -73,6 +73,18 @@ const extractYoutubeResult = (payload) => {
   return null;
 };
 
+const pendingStatuses = new Set([
+  'processing',
+  'pending',
+  'queued',
+  'uploading',
+  'in_progress',
+  'in-progress',
+]);
+
+const isPendingResult = (value) =>
+  pendingStatuses.has(String(value?.status || '').trim().toLowerCase());
+
 const normalizeResult = ({payload, youtube, requestId, metadata}) => {
   const videoId =
     youtube?.platform_post_id ||
@@ -184,18 +196,21 @@ const upload = async ({videoPath, metadataPath}) => {
     throw new Error(`Upload-Post returned non-JSON: ${raw.slice(0, 2000)}`);
   }
 
-  if (payload.success === false) {
+  if (payload.success === false && !isPendingResult(payload)) {
     throw new Error(`Upload-Post upload failed: ${JSON.stringify(payload)}`);
   }
 
   let youtube = extractYoutubeResult(payload);
-  if (youtube?.success === false) {
+  if (youtube?.success === false && !isPendingResult(youtube)) {
     throw new Error(`YouTube upload failed: ${JSON.stringify(youtube)}`);
   }
 
   const requestId = payload.request_id || payload.job_id || null;
+  const alreadyCompleted =
+    youtube?.success === true ||
+    String(payload?.status || '').toLowerCase() === 'completed';
 
-  if (!youtube && requestId) {
+  if (requestId && !alreadyCompleted) {
     for (let attempt = 1; attempt <= 120; attempt++) {
       await sleep(10000);
 
@@ -215,7 +230,13 @@ const upload = async ({videoPath, metadataPath}) => {
       const status = JSON.parse(statusRaw);
       youtube = extractYoutubeResult(status);
 
-      if (youtube?.success === false) {
+      if (status?.success === false && !isPendingResult(status) && !youtube) {
+        throw new Error(
+          `Upload-Post async upload failed: ${JSON.stringify(status)}`,
+        );
+      }
+
+      if (youtube?.success === false && !isPendingResult(youtube)) {
         throw new Error(
           `YouTube async upload failed: ${JSON.stringify(youtube)}`,
         );
@@ -223,14 +244,14 @@ const upload = async ({videoPath, metadataPath}) => {
 
       if (
         youtube?.success === true ||
-        status.status === 'completed'
+        String(status?.status || '').toLowerCase() === 'completed'
       ) {
         payload = status;
         break;
       }
 
       console.log(
-        `Upload-Post status: attempt=${attempt} status=${status.status || 'unknown'}`,
+        `Upload-Post status: attempt=${attempt} status=${status.status || youtube?.status || 'unknown'}`,
       );
     }
   }
