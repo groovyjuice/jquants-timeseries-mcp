@@ -1,16 +1,11 @@
 name: Run Hormuz Oil Rates 20260910
 
 on:
-  push:
-    branches:
-      - remotion-prototype
-    paths:
-      - ".github/workflows/run-hormuz-20260910.yml"
   workflow_dispatch:
 
 jobs:
   run-video-pipeline:
-    uses: ./.github/workflows/video-pipeline.yml
+    uses: ./.github/workflows/video-pipeline-youtube-direct.yml
     with:
       project_key: "hormuz-oil-rates-20260910"
       video_plan_file_id: "1KeT6lZOrjS8qGGHHWi6mluywhp5_N2fK"
