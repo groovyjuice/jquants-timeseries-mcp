@@ -1,30 +1,10 @@
 import http from 'node:http';
-import {readFile} from 'node:fs/promises';
 import {createHash, randomBytes} from 'node:crypto';
 
-const CLIENT_FILE = process.argv[2];
-
-const loadClient = async () => {
-  if (CLIENT_FILE) {
-    const parsed = JSON.parse(await readFile(CLIENT_FILE, 'utf8'));
-    const client = parsed.installed || parsed.web;
-    if (!client?.client_id || !client?.client_secret) {
-      throw new Error('OAuth JSON does not contain client_id/client_secret');
-    }
-    return {
-      clientId: client.client_id,
-      clientSecret: client.client_secret,
-    };
-  }
-
-  const clientId = process.env.YOUTUBE_CLIENT_ID?.trim();
-  const clientSecret = process.env.YOUTUBE_CLIENT_SECRET?.trim();
-  if (!clientId || !clientSecret) {
-    throw new Error(
-      'Pass the Google OAuth desktop client JSON file as the first argument, or set YOUTUBE_CLIENT_ID/YOUTUBE_CLIENT_SECRET.',
-    );
-  }
-  return {clientId, clientSecret};
+const getEnv = (name) => {
+  const value = process.env[name]?.trim();
+  if (!value) throw new Error(`${name} is not configured`);
+  return value;
 };
 
 const base64url = (buffer) =>
@@ -35,7 +15,11 @@ const base64url = (buffer) =>
     .replace(/=+$/g, '');
 
 const main = async () => {
-  const {clientId, clientSecret} = await loadClient();
+  // No credential JSON file is used. Reuse the same OAuth client already
+  // configured for Google Drive, and request a separate YouTube refresh token.
+  const clientId = getEnv('GOOGLE_CLIENT_ID');
+  const clientSecret = getEnv('GOOGLE_CLIENT_SECRET');
+
   const state = base64url(randomBytes(24));
   const verifier = base64url(randomBytes(64));
   const challenge = base64url(
@@ -85,29 +69,24 @@ const main = async () => {
           throw new Error('OAuth state mismatch');
         }
 
-        const error = url.searchParams.get('error');
-        if (error) throw new Error(`Google OAuth error: ${error}`);
+        const oauthError = url.searchParams.get('error');
+        if (oauthError) throw new Error(`Google OAuth error: ${oauthError}`);
 
         const code = url.searchParams.get('code');
         if (!code) throw new Error('Google did not return an OAuth code');
 
-        const tokenResponse = await fetch(
-          'https://oauth2.googleapis.com/token',
-          {
-            method: 'POST',
-            headers: {
-              'content-type': 'application/x-www-form-urlencoded',
-            },
-            body: new URLSearchParams({
-              client_id: clientId,
-              client_secret: clientSecret,
-              code,
-              code_verifier: verifier,
-              grant_type: 'authorization_code',
-              redirect_uri: redirectUri,
-            }),
-          },
-        );
+        const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+          method: 'POST',
+          headers: {'content-type': 'application/x-www-form-urlencoded'},
+          body: new URLSearchParams({
+            client_id: clientId,
+            client_secret: clientSecret,
+            code,
+            code_verifier: verifier,
+            grant_type: 'authorization_code',
+            redirect_uri: redirectUri,
+          }),
+        });
 
         const tokens = await tokenResponse.json().catch(() => ({}));
         if (!tokenResponse.ok) {
@@ -133,16 +112,14 @@ const main = async () => {
 
   if (!result.refresh_token) {
     throw new Error(
-      'No refresh token was returned. Revoke the existing app grant and rerun with prompt=consent.',
+      'No refresh token was returned. Revoke the existing app grant and rerun.',
     );
   }
 
-  console.log('\nAuthorization complete. Add these GitHub Actions secrets:\n');
-  console.log(`YOUTUBE_CLIENT_ID=${clientId}`);
-  console.log(`YOUTUBE_CLIENT_SECRET=${clientSecret}`);
+  console.log('\nAuthorization complete. Add ONLY this new GitHub Actions secret:\n');
   console.log(`YOUTUBE_REFRESH_TOKEN=${result.refresh_token}`);
   console.log(
-    '\nKeep these values private. Do not commit them to the repository.\n',
+    '\nGOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are reused from the existing Drive OAuth configuration. Keep the refresh token private.\n',
   );
 };
 
