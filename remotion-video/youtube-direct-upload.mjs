@@ -8,6 +8,14 @@ const getEnv = (name) => {
   return value;
 };
 
+const firstEnv = (...names) => {
+  for (const name of names) {
+    const value = process.env[name]?.trim();
+    if (value) return value;
+  }
+  throw new Error(`${names.join(' or ')} is not configured`);
+};
+
 const cleanTags = (tags) =>
   (Array.isArray(tags) ? tags : [])
     .map((tag) => String(tag || '').trim().replace(/^#+/, ''))
@@ -39,12 +47,12 @@ const main = async () => {
   if (!tags.length) throw new Error('YouTube tags are empty');
 
   const oauth2 = new google.auth.OAuth2(
-    getEnv('GOOGLE_CLIENT_ID'),
-    getEnv('GOOGLE_CLIENT_SECRET'),
+    firstEnv('YOUTUBE_CLIENT_ID', 'GOOGLE_CLIENT_ID'),
+    firstEnv('YOUTUBE_CLIENT_SECRET', 'GOOGLE_CLIENT_SECRET'),
   );
   oauth2.setCredentials({refresh_token: getEnv('YOUTUBE_REFRESH_TOKEN')});
 
-  // Force a token refresh before reading the 200MB+ video so auth problems fail fast.
+  // Fail fast on OAuth problems before streaming the large video file.
   await oauth2.getAccessToken();
 
   const youtube = google.youtube({version: 'v3', auth: oauth2});
