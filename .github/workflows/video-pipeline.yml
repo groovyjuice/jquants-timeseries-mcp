@@ -332,7 +332,7 @@ jobs:
           BGM="remotion-video/public/common/bgm/main_bgm.mp3"
           test -f "$BGM"
 
-          ffmpeg -y             -i narration-video.mp4             -stream_loop -1 -i "$BGM"             -filter_complex "[1:a]volume=0.025,afade=t=in:st=0:d=1,afade=t=out:st=${FADE_OUT_START}:d=1.5[bgm];[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=0[mix];[mix]loudnorm=I=-15:LRA=7:TP=-1[a]"             -map 0:v:0 -map "[a]"             -c:v copy -c:a aac -b:a 128k -ar 48000 -ac 2 -shortest             -movflags +faststart             final_video.mp4
+          ffmpeg -y             -i narration-video.mp4             -stream_loop -1 -i "$BGM"             -filter_complex "[1:a]volume=0.025,afade=t=in:st=0:d=1,afade=t=out:st=${FADE_OUT_START}:d=1.5[bgm];[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=0[mix];[mix]loudnorm=I=-15:LRA=7:TP=-1.5[a]"             -map 0:v:0 -map "[a]"             -c:v copy -c:a aac -b:a 128k -ar 48000 -ac 2 -shortest             -movflags +faststart             final_video.mp4
 
       - name: Verify final media and full decode
         shell: bash
@@ -386,7 +386,7 @@ jobs:
               f.write(f"integrated_lufs={i}\ntrue_peak_dbtp={tp}\n")
           if not (-16.0 <= i <= -14.0):
               raise SystemExit(f"Integrated loudness out of range: {i}")
-          if tp > -0.5:
+          if tp > -1.0:
               raise SystemExit(f"True peak too high: {tp}")
           print(f"loudness QA passed: I={i}, TP={tp}")
           PY
