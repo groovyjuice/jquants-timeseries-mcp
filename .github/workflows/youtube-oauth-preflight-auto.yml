@@ -1,0 +1,32 @@
+name: YouTube OAuth Preflight Auto
+
+on:
+  push:
+    branches:
+      - remotion-prototype
+    paths:
+      - ".github/workflows/youtube-oauth-preflight-auto.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+      YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+      YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: remotion-prototype
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        working-directory: remotion-video
+        run: npm install --ignore-scripts --prefer-offline
+      - name: Check YouTube OAuth refresh token and scope
+        run: node remotion-video/youtube-oauth-check.mjs
