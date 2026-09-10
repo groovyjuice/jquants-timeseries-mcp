@@ -1,0 +1,23 @@
+name: Run Feature 4052 Video Pipeline Once
+
+on:
+  push:
+    branches:
+      - remotion-prototype
+    paths:
+      - '.github/workflows/run-feature-4052-once.yml'
+
+jobs:
+  run-video-pipeline:
+    if: github.event.head_commit.message == 'Run Feature 4052 video pipeline'
+    uses: ./.github/workflows/video-pipeline.yml
+    with:
+      project_key: '2026-09-10_フィーチャ_4052_1340円ストップ高と大株主売却'
+      video_plan_file_id: '1-u9kCcBHRqZmtrBeY2-c7EitkZ78sEFU'
+      slides_folder_id: '1z9tZR3cBTg0qPWCSl1MLHSE2MNsZL51Z'
+      audio_folder_id: '1RE8IC0RYJb8Vex2MQP8Idd29eSrqTkM2'
+      audio_manifest_file_id: '1K0po-qwy4DO39tVrmSuQ065Y0N3VENh_'
+      ending_slide_file_id: '1E_g376FHQOt0M7c6gAJAjpNOCnKVpj0k'
+      output_filename: 'feature-4052-20260910.mp4'
+      segment_count: '12'
+    secrets: inherit
