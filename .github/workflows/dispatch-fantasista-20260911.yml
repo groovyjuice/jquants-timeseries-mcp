@@ -7,16 +7,27 @@ on:
     paths:
       - '.github/workflows/dispatch-fantasista-20260911.yml'
 
+permissions:
+  contents: read
+  actions: write
+
 jobs:
-  pipeline:
-    uses: ./.github/workflows/video-pipeline-youtube-direct.yml
-    with:
-      project_key: "fantasista-1783-20260911"
-      video_plan_file_id: "12pNoekTPQWcjwlf_hDAgePNW1QeaGF_R"
-      slides_folder_id: "1TUlBsn0_RtP4n-RwUTHYL2G6P8FOfCk3"
-      audio_folder_id: "1FtAih9IKXMH9V8ywhNhPK_1FYLKo1QYt"
-      audio_manifest_file_id: "1RJY3vI9CxHwjP7hARixb5cvjb1hIogKy"
-      ending_slide_file_id: "1E_g376FHQOt0M7c6gAJAjpNOCnKVpj0k"
-      output_filename: "fantasista-1783-pts-ai-datacenter-20260911.mp4"
-      segment_count: "12"
-    secrets: inherit
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch standard direct pipeline
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run video-pipeline-youtube-direct.yml \
+            --repo "${{ github.repository }}" \
+            --ref remotion-prototype \
+            -f project_key="fantasista-1783-20260911" \
+            -f video_plan_file_id="12pNoekTPQWcjwlf_hDAgePNW1QeaGF_R" \
+            -f slides_folder_id="1TUlBsn0_RtP4n-RwUTHYL2G6P8FOfCk3" \
+            -f audio_folder_id="1FtAih9IKXMH9V8ywhNhPK_1FYLKo1QYt" \
+            -f audio_manifest_file_id="1RJY3vI9CxHwjP7hARixb5cvjb1hIogKy" \
+            -f ending_slide_file_id="1E_g376FHQOt0M7c6gAJAjpNOCnKVpj0k" \
+            -f output_filename="fantasista-1783-pts-ai-datacenter-20260911.mp4" \
+            -f segment_count="12"
