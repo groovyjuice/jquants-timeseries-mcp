@@ -1,0 +1,41 @@
+name: Dispatch Hormuz Audio Fix 20260911
+
+on:
+  push:
+    branches:
+      - remotion-prototype
+    paths:
+      - '.github/workflows/dispatch-hormuz-audiofix-20260911.yml'
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch direct YouTube video pipeline
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api --method POST \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "/repos/${GITHUB_REPOSITORY}/actions/workflows/video-pipeline-youtube-direct.yml/dispatches" \
+            --input - <<'JSON'
+          {
+            "ref": "remotion-prototype",
+            "inputs": {
+              "project_key": "hormuz-oil-rates-20260910-audiofix-20260911",
+              "video_plan_file_id": "1KeT6lZOrjS8qGGHHWi6mluywhp5_N2fK",
+              "slides_folder_id": "10uQq5NORHcuF3hjHpb9mqda6rGh0_0uF",
+              "audio_folder_id": "1Qwl7fY4m7Nc4XcEfiiv9n4CHvBNg2FdV",
+              "audio_manifest_file_id": "1i5RqNofZzXp3bDPrULwFIa0Xqc70ZkdG",
+              "ending_slide_file_id": "1E_g376FHQOt0M7c6gAJAjpNOCnKVpj0k",
+              "output_filename": "hormuz-oil-rates-20260910-audiofix-20260911.mp4",
+              "segment_count": "12"
+            }
+          }
+          JSON
