@@ -1,0 +1,23 @@
+name: Run Hormuz Audio Fix 20260911
+
+on:
+  push:
+    branches:
+      - remotion-prototype
+    paths:
+      - '.github/workflows/run-hormuz-audiofix-20260911.yml'
+  workflow_dispatch:
+
+jobs:
+  run-video-pipeline:
+    uses: ./.github/workflows/video-pipeline-youtube-direct.yml
+    with:
+      project_key: "hormuz-oil-rates-20260910-audiofix-20260911"
+      video_plan_file_id: "1KeT6lZOrjS8qGGHHWi6mluywhp5_N2fK"
+      slides_folder_id: "10uQq5NORHcuF3hjHpb9mqda6rGh0_0uF"
+      audio_folder_id: "1Qwl7fY4m7Nc4XcEfiiv9n4CHvBNg2FdV"
+      audio_manifest_file_id: "1i5RqNofZzXp3bDPrULwFIa0Xqc70ZkdG"
+      ending_slide_file_id: "1E_g376FHQOt0M7c6gAJAjpNOCnKVpj0k"
+      output_filename: "hormuz-oil-rates-20260910-audiofix-20260911.mp4"
+      segment_count: "12"
+    secrets: inherit
