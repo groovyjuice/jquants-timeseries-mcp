@@ -369,3 +369,5 @@ jobs:
           path: delivery/
           retention-days: 7
           compression-level: 0
+
+# rerun trigger 2026-09-11T12:54+09:00
