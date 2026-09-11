@@ -1,0 +1,22 @@
+name: Run Fantasista 1783 Direct 20260911
+
+on:
+  push:
+    branches:
+      - remotion-prototype
+    paths:
+      - '.github/workflows/dispatch-fantasista-20260911.yml'
+
+jobs:
+  pipeline:
+    uses: ./.github/workflows/video-pipeline-youtube-direct.yml
+    with:
+      project_key: "fantasista-1783-20260911"
+      video_plan_file_id: "12pNoekTPQWcjwlf_hDAgePNW1QeaGF_R"
+      slides_folder_id: "1TUlBsn0_RtP4n-RwUTHYL2G6P8FOfCk3"
+      audio_folder_id: "1FtAih9IKXMH9V8ywhNhPK_1FYLKo1QYt"
+      audio_manifest_file_id: "1RJY3vI9CxHwjP7hARixb5cvjb1hIogKy"
+      ending_slide_file_id: "1E_g376FHQOt0M7c6gAJAjpNOCnKVpj0k"
+      output_filename: "fantasista-1783-pts-ai-datacenter-20260911.mp4"
+      segment_count: "12"
+    secrets: inherit
