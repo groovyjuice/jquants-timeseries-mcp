@@ -1,0 +1,41 @@
+name: Dispatch Howa 6203 20260911
+
+on:
+  push:
+    branches:
+      - remotion-prototype
+    paths:
+      - '.github/workflows/dispatch-howa-20260911.yml'
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch direct YouTube video pipeline
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api --method POST \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "/repos/${GITHUB_REPOSITORY}/actions/workflows/video-pipeline-youtube-direct.yml/dispatches" \
+            --input - <<'JSON'
+          {
+            "ref": "remotion-prototype",
+            "inputs": {
+              "project_key": "2026-09-11_howa_6203_drone_mass_production",
+              "video_plan_file_id": "1xGjHF8NAOqDxGLIiLGos5cjeYhtvKKwN",
+              "slides_folder_id": "1chXrITReuv5-2ojjiYZRRiwcyPzee-oj",
+              "audio_folder_id": "1jLBbxdldUcQLWRBuZH2AhRGArTl3ccXx",
+              "audio_manifest_file_id": "1bLHAZT53vHOAeTOak1ex1wQhfed25VvC",
+              "ending_slide_file_id": "1E_g376FHQOt0M7c6gAJAjpNOCnKVpj0k",
+              "output_filename": "howa-6203-drone-20260911.mp4",
+              "segment_count": "12"
+            }
+          }
+          JSON
