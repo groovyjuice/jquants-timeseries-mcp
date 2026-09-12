@@ -78,35 +78,241 @@ const xEstimatedLength = (body) => {
   return Array.from(text.replace(placeholder, 'x'.repeat(23))).length;
 };
 
-const normalizeSecurityCode = (plan) => {
-  const raw =
-    plan?.security_code ??
-    plan?.stock_code ??
-    plan?.ticker_code ??
-    plan?.code ??
-    null;
+const SECURITY_CODE_PATTERN = /^(?:\d{4}|\d{3}[A-Z])$/i;
 
+const normalizeSecurityCodeValue = (raw) => {
   if (raw === null || raw === undefined) return null;
-
-  const text = String(raw).trim();
-  if (!text) return null;
-
-  // Japanese listed-equity codes are represented here as 4 digits.
-  // Do not synthesize codes for crypto, FX, commodities, indices, etc.
-  return /^\d{4}$/.test(text) ? text : null;
+  const text = String(raw).trim().toUpperCase();
+  return SECURITY_CODE_PATTERN.test(text) ? text : null;
 };
 
-const ensureRequiredTags = ({tags, plan}) => {
-  const required = ['賢明なる投資家チャンネル'];
+const normalizeSecurityCode = (plan) => {
+  const direct = [
+    plan?.security_code,
+    plan?.stock_code,
+    plan?.ticker_code,
+    plan?.code,
+  ];
+
+  for (const raw of direct) {
+    const normalized = normalizeSecurityCodeValue(raw);
+    if (normalized) return normalized;
+  }
+
+  const labeledSource = [
+    plan?.video_title,
+    plan?.title,
+    plan?.topic,
+    plan?.project_key,
+    compactSource(plan),
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  const labeledMatch = labeledSource.match(
+    /(?:銘柄コード|証券コード|株式コード|stock\s*code|security\s*code)\s*[：:]?\s*(\d{4}|\d{3}[A-Z])\b/i,
+  );
+  if (labeledMatch) return normalizeSecurityCodeValue(labeledMatch[1]);
+
+  // New TSE codes such as 285A are distinctive enough to recover from titles/project keys.
+  // Numeric-only 4-digit codes are not inferred without a label because dates/prices can collide.
+  const titleLikeSource = [
+    plan?.video_title,
+    plan?.title,
+    plan?.topic,
+    plan?.project_key,
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const alphaCodeMatch = titleLikeSource.match(/(?:^|[^0-9A-Z])(\d{3}[A-Z])(?:$|[^0-9A-Z])/i);
+  return alphaCodeMatch ? normalizeSecurityCodeValue(alphaCodeMatch[1]) : null;
+};
+
+const hasUnresolvedSecurityCode = (plan) => {
+  if (!plan || !Object.prototype.hasOwnProperty.call(plan, 'security_code')) {
+    return false;
+  }
+  if (normalizeSecurityCode(plan)) return false;
+
+  const note = String(plan?.security_code_note || '');
+  return (
+    /(銘柄コード|証券コード)/.test(note) &&
+    /(未設定|要確認|確認する|別途確認)/.test(note)
+  );
+};
+
+const assertPublishMetadataReady = (plan) => {
+  if (!hasUnresolvedSecurityCode(plan)) return;
+  throw new Error(
+    'Japanese listed-equity security code is unresolved. Set video_plan.security_code before generating publish metadata so the YouTube tags cannot be uploaded without the stock code.',
+  );
+};
+
+const normalizeTag = (value) =>
+  String(value || '')
+    .trim()
+    .replace(/^#+/, '')
+    .replace(/\s+/g, ' ')
+    .slice(0, 60);
+
+const BAD_FILLER_TAG_PATTERN = /^(?:投資解説|動画解説|解説|タグ)\d+$/;
+
+const STOCK_GENERIC_TAGS = [
+  '日本株',
+  '株式投資',
+  '個人投資家',
+  '銘柄分析',
+  '企業分析',
+  '株価',
+  '投資ニュース',
+  'マーケット',
+  '市場分析',
+  '資産運用',
+];
+
+const GENERAL_GENERIC_TAGS = [
+  '投資',
+  '個人投資家',
+  '投資ニュース',
+  'マーケット',
+  '市場分析',
+  '資産運用',
+  'ニュース解説',
+  '相場',
+  '経済ニュース',
+  '投資情報',
+];
+
+const TAG_STOPWORDS = new Set([
+  'チャンネル',
+  'ポイント',
+  'ニュース',
+  'マーケット',
+  'データ',
+  'モデル',
+  'リバウンド',
+  'ポジション',
+  '今回',
+  '今後',
+]);
+
+const KNOWN_TOPIC_TERMS = [
+  'NAND',
+  'SSD',
+  'AI',
+  'PTS',
+  'ADR',
+  'Hyperliquid',
+  'DeepSeek',
+  'KIOXIA',
+  '半導体',
+  '半導体株',
+  'メモリー',
+  'フラッシュメモリー',
+  'データセンター',
+  '株式分割',
+  '自己株取得',
+  '信用需給',
+  '信用買い残',
+  'NAND市況',
+  '業績',
+  '財務',
+];
+
+const countOccurrences = (haystack, needle) => {
+  if (!needle) return 0;
+  let count = 0;
+  let cursor = 0;
+  while (true) {
+    const index = haystack.indexOf(needle, cursor);
+    if (index < 0) return count;
+    count += 1;
+    cursor = index + needle.length;
+  }
+};
+
+const extractFrequentProperTerms = (text) => {
+  const counts = new Map();
+  const add = (raw) => {
+    const term = normalizeTag(raw);
+    if (
+      term.length < 2 ||
+      term.length > 30 ||
+      TAG_STOPWORDS.has(term) ||
+      BAD_FILLER_TAG_PATTERN.test(term)
+    ) {
+      return;
+    }
+    counts.set(term, (counts.get(term) || 0) + 1);
+  };
+
+  for (const match of text.matchAll(/[\p{Script=Katakana}ー]{3,30}/gu)) {
+    add(match[0]);
+  }
+  for (const match of text.matchAll(/[A-Za-z][A-Za-z0-9.+-]{1,29}/g)) {
+    add(match[0]);
+  }
+
+  return [...counts.entries()]
+    .filter(([, count]) => count >= 2)
+    .sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)
+    .map(([term]) => term)
+    .slice(0, 14);
+};
+
+const extractPlanTopicTags = (plan) => {
+  const slides = Array.isArray(plan?.slides) ? plan.slides : [];
+  const source = compactSource(plan);
+  const explicitNames = [
+    plan?.security_name,
+    plan?.company_name,
+    plan?.issuer_name,
+    plan?.stock_name,
+    plan?.company,
+    plan?.brand_name,
+  ]
+    .map(normalizeTag)
+    .filter(Boolean);
+
+  const shortStructuredPhrases = [];
+  for (const slide of slides) {
+    const values = [slide?.section, ...(Array.isArray(slide?.slide_text) ? slide.slide_text : [])];
+    for (const value of values) {
+      const text = normalizeTag(value);
+      if (!text || text.length < 2 || text.length > 24) continue;
+      if (/[。！？!?]/.test(text)) continue;
+      shortStructuredPhrases.push(text);
+    }
+  }
+
+  const knownTerms = KNOWN_TOPIC_TERMS.filter((term) =>
+    source.toLowerCase().includes(term.toLowerCase()),
+  ).sort((a, b) => countOccurrences(source.toLowerCase(), b.toLowerCase()) - countOccurrences(source.toLowerCase(), a.toLowerCase()));
+
+  return [
+    ...explicitNames,
+    ...extractFrequentProperTerms(source),
+    ...knownTerms,
+    ...shortStructuredPhrases,
+  ];
+};
+
+const buildFinalTags = ({tags, plan}) => {
   const securityCode = normalizeSecurityCode(plan);
+  const required = ['賢明なる投資家チャンネル'];
   if (securityCode) required.push(securityCode);
 
+  const extracted = extractPlanTopicTags(plan);
+  const generic = securityCode ? STOCK_GENERIC_TAGS : GENERAL_GENERIC_TAGS;
   const merged = [
     ...required,
+    ...extracted,
     ...(Array.isArray(tags) ? tags : []),
+    ...generic,
   ]
-    .map((value) => String(value || '').trim().replace(/^#+/, ''))
-    .filter(Boolean);
+    .map(normalizeTag)
+    .filter(Boolean)
+    .filter((tag) => !BAD_FILLER_TAG_PATTERN.test(tag));
 
   return [...new Set(merged)].slice(0, 30);
 };
@@ -144,7 +350,6 @@ const validate = (data) => {
     x_estimated_length_with_url: estimatedLength,
   };
 };
-
 
 const formatChapterTimestamp = (seconds) => {
   const total = Math.max(0, Math.floor(Number(seconds) || 0));
@@ -339,7 +544,6 @@ export const applyChaptersToPublishMetadata = async ({
   return finalized;
 };
 
-
 const buildDeterministicMetadata = (plan) => {
   const slides = Array.isArray(plan?.slides) ? plan.slides : [];
   const baseTitle = String(
@@ -350,7 +554,6 @@ const buildDeterministicMetadata = (plan) => {
       '動画解説',
   ).trim();
   const topic = String(plan?.topic || '').trim();
-  const securityCode = normalizeSecurityCode(plan);
 
   const rawTitles = [
     baseTitle,
@@ -371,22 +574,9 @@ const buildDeterministicMetadata = (plan) => {
     );
   }
 
-  const sourceTerms = [baseTitle, topic]
-    .join(' ')
-    .split(/[\s、。・｜|／/（）()「」『』【】]+/)
-    .map((v) => v.trim())
-    .filter((v) => v.length >= 2 && v.length <= 30);
-
-  const genericTags = securityCode
-    ? ['日本株', '株式投資', '個人投資家', '企業分析', '株価', '投資ニュース', 'マーケット', '銘柄分析']
-    : ['投資', '個人投資家', '投資ニュース', 'マーケット', '市場分析', '資産運用', 'ニュース解説', '相場'];
-
-  const tags = ensureRequiredTags({
-    tags: [...sourceTerms, ...genericTags],
-    plan,
-  });
-  while (tags.length < 10) {
-    tags.push('投資解説' + (tags.length + 1));
+  const tags = buildFinalTags({tags: [], plan});
+  if (tags.length < 10) {
+    throw new Error('Unable to build at least 10 meaningful YouTube tags from the plan.');
   }
 
   const descriptionIntro = topic
@@ -410,12 +600,13 @@ const buildDeterministicMetadata = (plan) => {
   });
 };
 
-
 export const generatePublishMetadata = async ({plan, outputDir}) => {
   const source = compactSource(plan);
   if (!source.trim()) {
     throw new Error('video plan does not contain enough content for publish metadata');
   }
+
+  assertPublishMetadataReady(plan);
 
   let generated;
   let model = 'deterministic-plan-derived';
@@ -445,8 +636,10 @@ export const generatePublishMetadata = async ({plan, outputDir}) => {
           'It should explain what the video covers and the main investor viewpoints without spoiling every conclusion.',
           'Do not include the standard channel boilerplate in description_intro; the system appends it.',
           'tags must be 10-30 YouTube tags as plain terms without #.',
+          'Prioritize video-specific tags: company/security name, ticker/security code, products, industry, catalysts, market terms, and named technologies that actually appear in the supplied source.',
+          'Avoid generic-only tag sets. Do not create numbered filler tags such as 投資解説10, 動画解説11, or タグ12.',
           'Always include 賢明なる投資家チャンネル as a tag.',
-          'If the supplied plan has a Japanese listed-equity security_code, include that 4-digit code as a tag.',
+          'If the supplied plan has a Japanese listed-equity security_code, include that 4-character code as a tag. Codes may be four digits or three digits plus one letter, such as 285A.',
           'x_post_body is a concise Japanese announcement for X. Do not include a URL; the system appends [動画URL].',
           'Keep x_post_body short enough that adding a URL still fits within 140 characters.',
           'Do not use investment-recommendation language such as 絶対買い or 必ず上がる.',
@@ -474,10 +667,13 @@ export const generatePublishMetadata = async ({plan, outputDir}) => {
     generated = buildDeterministicMetadata(plan);
   }
 
-  generated.tags = ensureRequiredTags({
+  generated.tags = buildFinalTags({
     tags: generated.tags,
     plan,
   });
+  if (generated.tags.length < 10) {
+    throw new Error('Final YouTube tags contain fewer than 10 meaningful unique tags.');
+  }
 
   const description = [
     generated.description_intro,
