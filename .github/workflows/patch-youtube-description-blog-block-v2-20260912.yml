@@ -1,0 +1,59 @@
+name: Patch YouTube Description Blog Block V2 20260912
+
+on:
+  push:
+    branches:
+      - remotion-prototype
+    paths:
+      - ".github/workflows/patch-youtube-description-blog-block-v2-20260912.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: remotion-prototype
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply patch
+        shell: bash
+        run: |
+          echo 'CmZyb20gcGF0aGxpYiBpbXBvcnQgUGF0aApwPVBhdGgoInJlbW90aW9uLXZpZGVvL3B1Ymxpc2gtbWV0YWRhdGEubWpzIikKdD1wLnJlYWRfdGV4dChlbmNvZGluZz0idXRmLTgiKQoKZGVmIG9uY2Uob2xkLG5ldyxsYWJlbCk6CiAgICBnbG9iYWwgdAogICAgYz10LmNvdW50KG9sZCkKICAgIGlmIGMhPTE6CiAgICAgICAgcmFpc2UgU3lzdGVtRXhpdChmIntsYWJlbH06IGV4cGVjdGVkIDEgZ290IHtjfSIpCiAgICB0PXQucmVwbGFjZShvbGQsbmV3LDEpCgphbmNob3I9J2NvbnN0IENIQU5ORUxfQk9JTEVSUExBVEUgPSBg44KI44GG44GT44Gd44CM6LOi5piO44Gq44KL5oqV6LOH5a6244OB44Oj44Oz44ON44Or44CN44G444CCJwpibG9nPSdjb25zdCBCTE9HX0FSVElDTEVfQkxPQ0sgPSBg4pa85LuK5pel44Gu5YuV55S744Gu44Od44Kk44Oz44OI6KiY5LqL77yI44OW44Ot44Kw77yJXFxu5YuV55S744Gu5YaF5a6544KS5paH5a2X44Go5Zuz6Kej44Gn44GY44Gj44GP44KK5b6p57+S44GX44Gf44GE5pa544Gv44GT44Gh44KJXFxuaHR0cHM6Ly9rZW5tZWl0b3VzaGlrYS5jb20vYXJjaGl2ZXMveHh4eGA7XFxuXFxuJwpvbmNlKGFuY2hvciwgYmxvZythbmNob3IsICJibG9nIGJsb2NrIikKCmhlbHBlcl9hbmNob3I9J2NvbnN0IGZvcm1hdENoYXB0ZXJUaW1lc3RhbXAgPSAoc2Vjb25kcykgPT4geycKaGVscGVyPScnJ2NvbnN0IGJ1aWxkRGVzY3JpcHRpb25IYXNodGFncyA9ICh7dGFncywgcGxhbn0pID0+IHsKICBjb25zdCBzZWN1cml0eUNvZGUgPSBub3JtYWxpemVTZWN1cml0eUNvZGUocGxhbik7CiAgY29uc3Qgc2VjdXJpdHlOYW1lID0gbm9ybWFsaXplU2VjdXJpdHlOYW1lKHBsYW4pOwogIGNvbnN0IGNhbmRpZGF0ZXMgPSBbCiAgICBzZWN1cml0eU5hbWUsCiAgICBzZWN1cml0eUNvZGUsCiAgICAuLi4oQXJyYXkuaXNBcnJheSh0YWdzKSA/IHRhZ3MgOiBbXSksCiAgICBzZWN1cml0eUNvZGUgPyAn5pel5pys5qCqJyA6ICfmipXos4cnLAogICAgJ+agquW8j+aKleizhycsCiAgXTsKCiAgY29uc3QgcmVzdWx0ID0gW107CiAgZm9yIChjb25zdCByYXcgb2YgY2FuZGlkYXRlcykgewogICAgY29uc3Qgbm9ybWFsaXplZCA9IG5vcm1hbGl6ZVRhZyhyYXcpCiAgICAgIC5yZXBsYWNlKC9cXHMrL2csICcnKQogICAgICAucmVwbGFjZSgvW14wLTlBLVphLXpcXHB7U2NyaXB0PUhhbn1cXHB7U2NyaXB0PUhpcmFnYW5hfVxccHtTY3JpcHQ9S2F0YWthbmF944O8XS9ndSwgJycpOwogICAgaWYgKCFub3JtYWxpemVkIHx8IG5vcm1hbGl6ZWQubGVuZ3RoID4gNDApIGNvbnRpbnVlOwogICAgaWYgKG5vcm1hbGl6ZWQgPT09ICfos6LmmI7jgarjgovmipXos4flrrbjg4Hjg6Pjg7Pjg43jg6snKSBjb250aW51ZTsKICAgIGNvbnN0IGhhc2h0YWcgPSBgIyR7bm9ybWFsaXplZH1gOwogICAgaWYgKCFyZXN1bHQuaW5jbHVkZXMoaGFzaHRhZykpIHJlc3VsdC5wdXNoKGhhc2h0YWcpOwogICAgaWYgKHJlc3VsdC5sZW5ndGggPj0gNSkgYnJlYWs7CiAgfQogIHJldHVybiByZXN1bHQ7Cn07CgonJycKb25jZShoZWxwZXJfYW5jaG9yLCBoZWxwZXIraGVscGVyX2FuY2hvciwgImhhc2h0YWcgaGVscGVyIikKCm9sZF9hcHBseT0nJycgIGNvbnN0IGRlc2NyaXB0aW9uUGFydHMgPSBbbWV0YWRhdGEuZGVzY3JpcHRpb25faW50cm9dOwoKICBpZiAoa2V5UG9pbnRUZXh0KSB7CiAgICBkZXNjcmlwdGlvblBhcnRzLnB1c2goJycsICfjgJDku4rlm57jga7jg53jgqTjg7Pjg4jjgJEnLCBrZXlQb2ludFRleHQpOwogIH0KCiAgaWYgKGNoYXB0ZXJzLmxlbmd0aCA+PSAzKSB7CiAgICBkZXNjcmlwdGlvblBhcnRzLnB1c2goJycsICfjgJDnm67mrKHjgJEnLCBjaGFwdGVyVGV4dCk7CiAgfQoKICBpZiAobWV0YWRhdGEuZGVzY3JpcHRpb25fY2xvc2luZykgewogICAgZGVzY3JpcHRpb25QYXJ0cy5wdXNoKCcnLCBtZXRhZGF0YS5kZXNjcmlwdGlvbl9jbG9zaW5nKTsKICB9CgogIGRlc2NyaXB0aW9uUGFydHMucHVzaCgnJywgQ0hBTk5FTF9CT0lMRVJQTEFURSk7CicnJwpuZXdfYXBwbHk9JycnICBjb25zdCBkZXNjcmlwdGlvbkhhc2h0YWdzID0gYnVpbGREZXNjcmlwdGlvbkhhc2h0YWdzKHsKICAgIHRhZ3M6IG1ldGFkYXRhLnRhZ3MsCiAgICBwbGFuLAogIH0pLmpvaW4oJyAnKTsKCiAgY29uc3QgZGVzY3JpcHRpb25QYXJ0cyA9IFtCTE9HX0FSVElDTEVfQkxPQ0ssICcnLCBtZXRhZGF0YS5kZXNjcmlwdGlvbl9pbnRyb107CgogIGlmIChrZXlQb2ludFRleHQpIHsKICAgIGRlc2NyaXB0aW9uUGFydHMucHVzaCgnJywgJ+OAkOS7iuWbnuOBruODneOCpOODs+ODiOOAkScsIGtleVBvaW50VGV4dCk7CiAgfQoKICBpZiAoY2hhcHRlcnMubGVuZ3RoID49IDMpIHsKICAgIGRlc2NyaXB0aW9uUGFydHMucHVzaCgnJywgJ+OAkOebruasoeOAkScsIGNoYXB0ZXJUZXh0KTsKICB9CgogIGlmIChtZXRhZGF0YS5kZXNjcmlwdGlvbl9jbG9zaW5nKSB7CiAgICBkZXNjcmlwdGlvblBhcnRzLnB1c2goJycsIG1ldGFkYXRhLmRlc2NyaXB0aW9uX2Nsb3NpbmcpOwogIH0KCiAgaWYgKGRlc2NyaXB0aW9uSGFzaHRhZ3MpIHsKICAgIGRlc2NyaXB0aW9uUGFydHMucHVzaCgnJywgZGVzY3JpcHRpb25IYXNodGFncyk7CiAgfQoKICBkZXNjcmlwdGlvblBhcnRzLnB1c2goJycsIENIQU5ORUxfQk9JTEVSUExBVEUpOwonJycKb25jZShvbGRfYXBwbHksbmV3X2FwcGx5LCJhcHBseSBsYXlvdXQiKQoKb2xkX2Jhc2U9JycnICBjb25zdCBkZXNjcmlwdGlvbiA9IFsKICAgIGdlbmVyYXRlZC5kZXNjcmlwdGlvbl9pbnRybywKICAgIGtleVBvaW50VGV4dCA/IGBcXG7jgJDku4rlm57jga7jg53jgqTjg7Pjg4jjgJFcXG4ke2tleVBvaW50VGV4dH1gIDogJycsCiAgICBnZW5lcmF0ZWQuZGVzY3JpcHRpb25fY2xvc2luZyA/IGBcXG4ke2dlbmVyYXRlZC5kZXNjcmlwdGlvbl9jbG9zaW5nfWAgOiAnJywKICAgICcnLAogICAgQ0hBTk5FTF9CT0lMRVJQTEFURSwKICBdCiAgICAuZmlsdGVyKChwYXJ0KSA9PiBwYXJ0ICE9PSAnJykKICAgIC5qb2luKCdcXG4nKTsKJycnCm5ld19iYXNlPScnJyAgY29uc3QgZGVzY3JpcHRpb25IYXNodGFncyA9IGJ1aWxkRGVzY3JpcHRpb25IYXNodGFncyh7CiAgICB0YWdzOiBnZW5lcmF0ZWQudGFncywKICAgIHBsYW4sCiAgfSkuam9pbignICcpOwogIGNvbnN0IGRlc2NyaXB0aW9uID0gWwogICAgQkxPR19BUlRJQ0xFX0JMT0NLLAogICAgJycsCiAgICBnZW5lcmF0ZWQuZGVzY3JpcHRpb25faW50cm8sCiAgICBrZXlQb2ludFRleHQgPyBgXFxu44CQ5LuK5Zue44Gu44Od44Kk44Oz44OI44CRXFxuJHtrZXlQb2ludFRleHR9YCA6ICcnLAogICAgZ2VuZXJhdGVkLmRlc2NyaXB0aW9uX2Nsb3NpbmcgPyBgXFxuJHtnZW5lcmF0ZWQuZGVzY3JpcHRpb25fY2xvc2luZ31gIDogJycsCiAgICBkZXNjcmlwdGlvbkhhc2h0YWdzID8gYFxcbiR7ZGVzY3JpcHRpb25IYXNodGFnc31gIDogJycsCiAgICAnJywKICAgIENIQU5ORUxfQk9JTEVSUExBVEUsCiAgXQogICAgLmZpbHRlcigocGFydCkgPT4gcGFydCAhPT0gJycpCiAgICAuam9pbignXFxuJyk7CicnJwpvbmNlKG9sZF9iYXNlLG5ld19iYXNlLCJiYXNlIGxheW91dCIpCm9uY2UoImV4cG9ydCB7Q0hBTk5FTF9CT0lMRVJQTEFURX07IiwiZXhwb3J0IHtCTE9HX0FSVElDTEVfQkxPQ0ssIENIQU5ORUxfQk9JTEVSUExBVEV9OyIsImV4cG9ydHMiKQpwLndyaXRlX3RleHQodCxlbmNvZGluZz0idXRmLTgiKQpwcmludCgicGF0Y2hlZCIpCg==' | base64 -d > /tmp/patch.py
+          python /tmp/patch.py
+      - name: Install dependencies
+        working-directory: remotion-video
+        run: npm install --ignore-scripts --prefer-offline
+      - name: Verify behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check remotion-video/publish-metadata.mjs
+          node --input-type=module <<'NODE'
+          import {generatePublishMetadata, applyChaptersToPublishMetadata, BLOG_ARTICLE_BLOCK} from './remotion-video/publish-metadata.mjs';
+          const plan={video_title:'メタプラネット 10円SO修正で株価反転なるか',topic:'10円SO修正と株価反転条件',security_name:'メタプラネット',security_code:'3350',slides:[{type:'content',section:'導入',display_title:'何が変わったのか',slide_text:['10円SOを大幅修正']},{type:'section_title',section:'10円SOの問題と修正',display_title:'10円SOの問題と修正'},{type:'content',section:'10円SOの問題と修正',display_title:'潜在株式数を削減',slide_text:['残存潜在株式数を約55.5％削減']},{type:'section_title',section:'株価反転材料とPTS',display_title:'株価反転材料とPTS'},{type:'content',section:'株価反転材料とPTS',display_title:'PTS反応',slide_text:['PTSは前日比約3.8％上昇']},{type:'section_title',section:'株価反転に必要な条件',display_title:'株価反転に必要な条件'},{type:'content',section:'株価反転に必要な条件',display_title:'今後の焦点',slide_text:['資本政策とmNAVを確認']}]};
+          const meta=await generatePublishMetadata({plan});
+          const scenes=Array.from({length:7},(_,i)=>({from:i*900,duration:900}));
+          const final=await applyChaptersToPublishMetadata({metadata:meta,plan,scenes,fps:30,totalFrames:6300});
+          if(!final.description.startsWith(BLOG_ARTICLE_BLOCK)) throw new Error('blog block is not first');
+          const ordered=['▼今日の動画のポイント記事（ブログ）','メタプラネット 10円SO修正で株価反転なるか','【今回のポイント】','【目次】','#メタプラネット','ようこそ「賢明なる投資家チャンネル」へ。'];
+          let cursor=-1;
+          for(const marker of ordered){const idx=final.description.indexOf(marker);if(idx<0||idx<=cursor) throw new Error(`order invalid at ${marker}`);cursor=idx;}
+          for(const marker of ['https://kenmeitoushika.com/archives/xxxx','#3350']) if(!final.description.includes(marker)) throw new Error(`missing ${marker}`);
+          console.log('blog-first description test passed');
+          NODE
+      - name: Commit standard change
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add remotion-video/publish-metadata.mjs
+          git diff --cached --check
+          git commit -m "Put blog link block first in YouTube descriptions"
+          git push origin HEAD:remotion-prototype
