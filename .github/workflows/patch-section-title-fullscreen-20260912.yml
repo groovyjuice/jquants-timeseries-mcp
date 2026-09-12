@@ -15,6 +15,8 @@ jobs:
   patch:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      PATCH_SCRIPT_B64: "CmZyb20gcGF0aGxpYiBpbXBvcnQgUGF0aApwYXRoID0gUGF0aCgncmVtb3Rpb24tdmlkZW8vc3JjL1ZpZGVvLnRzeCcpCnRleHQgPSBwYXRoLnJlYWRfdGV4dChlbmNvZGluZz0ndXRmLTgnKQoKb2xkID0gIiIiICBjb25zdCBvcGFjaXR5ID0gaW50ZXJwb2xhdGUoZnJhbWUsIFswLCAxMl0sIFswLCAxXSwgewogICAgZXh0cmFwb2xhdGVSaWdodDogJ2NsYW1wJywKICB9KTsKCiAgcmV0dXJuICgKIiIiCm5ldyA9ICIiIiAgY29uc3Qgb3BhY2l0eSA9IGludGVycG9sYXRlKGZyYW1lLCBbMCwgMTJdLCBbMCwgMV0sIHsKICAgIGV4dHJhcG9sYXRlUmlnaHQ6ICdjbGFtcCcsCiAgfSk7CiAgY29uc3QgaXNTZWN0aW9uVGl0bGUgPSBzY2VuZS5zbGlkZVR5cGUgPT09ICdzZWN0aW9uX3RpdGxlJzsKCiAgcmV0dXJuICgKIiIiCmlmIHRleHQuY291bnQob2xkKSAhPSAxOgogICAgcmFpc2UgU3lzdGVtRXhpdChmJ0NvdWxkIG5vdCBsb2NhdGUgU2xpZGVBcmVhIGhlYWRlcjoge3RleHQuY291bnQob2xkKX0gbWF0Y2hlcycpCnRleHQgPSB0ZXh0LnJlcGxhY2Uob2xkLCBuZXcsIDEpCgpvbGQgPSAiIiIgICAgICAgIHdpZHRoOiBTTElERV9XSURUSCwKICAgICAgICBoZWlnaHQ6IENPTlRFTlRfSEVJR0hULAogICAgICAgIGRpc3BsYXk6ICdmbGV4JywKICAgICAgICBhbGlnbkl0ZW1zOiAnY2VudGVyJywKICAgICAgICBqdXN0aWZ5Q29udGVudDogJ2NlbnRlcicsCiAgICAgICAgcGFkZGluZzogJzQwcHggNDBweCA1MHB4IDQwcHgnLAogICAgICAgIGJveFNpemluZzogJ2JvcmRlci1ib3gnLAoiIiIKbmV3ID0gIiIiICAgICAgICB3aWR0aDogaXNTZWN0aW9uVGl0bGUgPyAxOTIwIDogU0xJREVfV0lEVEgsCiAgICAgICAgaGVpZ2h0OiBpc1NlY3Rpb25UaXRsZSA/IDEwODAgOiBDT05URU5UX0hFSUdIVCwKICAgICAgICBkaXNwbGF5OiAnZmxleCcsCiAgICAgICAgYWxpZ25JdGVtczogJ2NlbnRlcicsCiAgICAgICAganVzdGlmeUNvbnRlbnQ6ICdjZW50ZXInLAogICAgICAgIHBhZGRpbmc6IGlzU2VjdGlvblRpdGxlID8gMCA6ICc0MHB4IDQwcHggNTBweCA0MHB4JywKICAgICAgICBib3hTaXppbmc6ICdib3JkZXItYm94JywKIiIiCmlmIHRleHQuY291bnQob2xkKSAhPSAxOgogICAgcmFpc2UgU3lzdGVtRXhpdChmJ0NvdWxkIG5vdCBsb2NhdGUgU2xpZGVBcmVhIG91dGVyIGxheW91dDoge3RleHQuY291bnQob2xkKX0gbWF0Y2hlcycpCnRleHQgPSB0ZXh0LnJlcGxhY2Uob2xkLCBuZXcsIDEpCgpvbGQgPSAiIiIgICAgICAgICAgd2lkdGg6ICcxMDAlJywKICAgICAgICAgIGFzcGVjdFJhdGlvOiAnMTYgLyA5JywKICAgICAgICAgIG1heEhlaWdodDogODEwLAogICAgICAgICAgcG9zaXRpb246ICdyZWxhdGl2ZScsCiAgICAgICAgICBvdmVyZmxvdzogJ2hpZGRlbicsCiAgICAgICAgICBiYWNrZ3JvdW5kQ29sb3I6ICcjZmZmZmZmJywKICAgICAgICAgIGJvcmRlcjogJzFweCBzb2xpZCByZ2JhKDIxNCwgMjI0LCAyMzUsIDAuOTUpJywKICAgICAgICAgIGJvcmRlclJhZGl1czogMjIsCiAgICAgICAgICBib3hTaGFkb3c6ICcwIDE0cHggMzRweCByZ2JhKDM5LCA3MywgMTExLCAwLjEwKScsCiAgICAgICAgICBvcGFjaXR5LAoiIiIKbmV3ID0gIiIiICAgICAgICAgIHdpZHRoOiAnMTAwJScsCiAgICAgICAgICBoZWlnaHQ6IGlzU2VjdGlvblRpdGxlID8gJzEwMCUnIDogdW5kZWZpbmVkLAogICAgICAgICAgYXNwZWN0UmF0aW86IGlzU2VjdGlvblRpdGxlID8gdW5kZWZpbmVkIDogJzE2IC8gOScsCiAgICAgICAgICBtYXhIZWlnaHQ6IGlzU2VjdGlvblRpdGxlID8gdW5kZWZpbmVkIDogODEwLAogICAgICAgICAgcG9zaXRpb246ICdyZWxhdGl2ZScsCiAgICAgICAgICBvdmVyZmxvdzogJ2hpZGRlbicsCiAgICAgICAgICBiYWNrZ3JvdW5kQ29sb3I6ICcjZmZmZmZmJywKICAgICAgICAgIGJvcmRlcjogaXNTZWN0aW9uVGl0bGUKICAgICAgICAgICAgPyAnbm9uZScKICAgICAgICAgICAgOiAnMXB4IHNvbGlkIHJnYmEoMjE0LCAyMjQsIDIzNSwgMC45NSknLAogICAgICAgICAgYm9yZGVyUmFkaXVzOiBpc1NlY3Rpb25UaXRsZSA/IDAgOiAyMiwKICAgICAgICAgIGJveFNoYWRvdzogaXNTZWN0aW9uVGl0bGUKICAgICAgICAgICAgPyAnbm9uZScKICAgICAgICAgICAgOiAnMCAxNHB4IDM0cHggcmdiYSgzOSwgNzMsIDExMSwgMC4xMCknLAogICAgICAgICAgb3BhY2l0eSwKIiIiCmlmIHRleHQuY291bnQob2xkKSAhPSAxOgogICAgcmFpc2UgU3lzdGVtRXhpdChmJ0NvdWxkIG5vdCBsb2NhdGUgU2xpZGVBcmVhIGlubmVyIGxheW91dDoge3RleHQuY291bnQob2xkKX0gbWF0Y2hlcycpCnRleHQgPSB0ZXh0LnJlcGxhY2Uob2xkLCBuZXcsIDEpCgpvbGQgPSAiIiIgIGNvbnN0IGZyYW1lID0gdXNlQ3VycmVudEZyYW1lKCk7CiAgY29uc3Qgc3VidGl0bGUgPSBzdWJ0aXRsZUF0RnJhbWUoc2NlbmUsIGZyYW1lKTsKCiAgcmV0dXJuICgKIiIiCm5ldyA9ICIiIiAgY29uc3QgZnJhbWUgPSB1c2VDdXJyZW50RnJhbWUoKTsKICBjb25zdCBzdWJ0aXRsZSA9IHN1YnRpdGxlQXRGcmFtZShzY2VuZSwgZnJhbWUpOwogIGNvbnN0IGlzU2VjdGlvblRpdGxlID0gc2NlbmUuc2xpZGVUeXBlID09PSAnc2VjdGlvbl90aXRsZSc7CgogIHJldHVybiAoCiIiIgppZiB0ZXh0LmNvdW50KG9sZCkgIT0gMToKICAgIHJhaXNlIFN5c3RlbUV4aXQoZidDb3VsZCBub3QgbG9jYXRlIFNjZW5lQ2FyZCBoZWFkZXI6IHt0ZXh0LmNvdW50KG9sZCl9IG1hdGNoZXMnKQp0ZXh0ID0gdGV4dC5yZXBsYWNlKG9sZCwgbmV3LCAxKQoKb2xkID0gIiIiICAgICAgPGRpdgogICAgICAgIHN0eWxlPXt7CiAgICAgICAgICBwb3NpdGlvbjogJ2Fic29sdXRlJywKICAgICAgICAgIHJpZ2h0OiAwLAogICAgICAgICAgdG9wOiAwLAogICAgICAgICAgd2lkdGg6IFNJREVCQVJfV0lEVEgsCiAgICAgICAgICBoZWlnaHQ6IENPTlRFTlRfSEVJR0hULAogICAgICAgICAgYmFja2dyb3VuZDoKICAgICAgICAgICAgJ2xpbmVhci1ncmFkaWVudCgxODBkZWcsIHJnYmEoMjQ1LDI0OSwyNTQsMC45MikgMCUsIHJnYmEoMjM2LDI0NCwyNTIsMC45NikgMTAwJSknLAogICAgICAgICAgYm9yZGVyTGVmdDogJzFweCBzb2xpZCByZ2JhKDIxNCwgMjI0LCAyMzUsIDAuOTUpJywKICAgICAgICAgIGJveFNpemluZzogJ2JvcmRlci1ib3gnLAogICAgICAgICAgYmFja2Ryb3BGaWx0ZXI6ICdibHVyKDNweCknLAogICAgICAgIH19CiAgICAgID4KICAgICAgICA8Q2hhbm5lbEJyYW5kIGxvZ29TcmM9e2xvZ29TcmN9IC8+CiAgICAgICAgPEF2YXRhciBlbW90aW9uPXtzY2VuZS5lbW90aW9ufSBtb3V0aEN1ZXM9e3NjZW5lLm1vdXRoQ3Vlc30gLz4KICAgICAgPC9kaXY+CiIiIgpuZXcgPSAiIiIgICAgICB7IWlzU2VjdGlvblRpdGxlID8gKAogICAgICAgIDxkaXYKICAgICAgICAgIHN0eWxlPXt7CiAgICAgICAgICAgIHBvc2l0aW9uOiAnYWJzb2x1dGUnLAogICAgICAgICAgICByaWdodDogMCwKICAgICAgICAgICAgdG9wOiAwLAogICAgICAgICAgICB3aWR0aDogU0lERUJBUl9XSURUSCwKICAgICAgICAgICAgaGVpZ2h0OiBDT05URU5UX0hFSUdIVCwKICAgICAgICAgICAgYmFja2dyb3VuZDoKICAgICAgICAgICAgICAnbGluZWFyLWdyYWRpZW50KDE4MGRlZywgcmdiYSgyNDUsMjQ5LDI1NCwwLjkyKSAwJSwgcmdiYSgyMzYsMjQ0LDI1MiwwLjk2KSAxMDAlKScsCiAgICAgICAgICAgIGJvcmRlckxlZnQ6ICcxcHggc29saWQgcmdiYSgyMTQsIDIyNCwgMjM1LCAwLjk1KScsCiAgICAgICAgICAgIGJveFNpemluZzogJ2JvcmRlci1ib3gnLAogICAgICAgICAgICBiYWNrZHJvcEZpbHRlcjogJ2JsdXIoM3B4KScsCiAgICAgICAgICB9fQogICAgICAgID4KICAgICAgICAgIDxDaGFubmVsQnJhbmQgbG9nb1NyYz17bG9nb1NyY30gLz4KICAgICAgICAgIDxBdmF0YXIgZW1vdGlvbj17c2NlbmUuZW1vdGlvbn0gbW91dGhDdWVzPXtzY2VuZS5tb3V0aEN1ZXN9IC8+CiAgICAgICAgPC9kaXY+CiAgICAgICkgOiBudWxsfQoiIiIKaWYgdGV4dC5jb3VudChvbGQpICE9IDE6CiAgICByYWlzZSBTeXN0ZW1FeGl0KGYnQ291bGQgbm90IGxvY2F0ZSBzaWRlYmFyOiB7dGV4dC5jb3VudChvbGQpfSBtYXRjaGVzJykKdGV4dCA9IHRleHQucmVwbGFjZShvbGQsIG5ldywgMSkKCnBhdGgud3JpdGVfdGV4dCh0ZXh0LCBlbmNvZGluZz0ndXRmLTgnKQo="
     steps:
       - uses: actions/checkout@v4
         with:
@@ -28,139 +30,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path('remotion-video/src/Video.tsx')
-          text = path.read_text(encoding='utf-8')
-
-          old = """  const opacity = interpolate(frame, [0, 12], [0, 1], {
-    extrapolateRight: 'clamp',
-  });
-
-  return (
-"""
-          new = """  const opacity = interpolate(frame, [0, 12], [0, 1], {
-    extrapolateRight: 'clamp',
-  });
-  const isSectionTitle = scene.slideType === 'section_title';
-
-  return (
-"""
-          if text.count(old) != 1:
-              raise SystemExit(f'Could not locate SlideArea header: {text.count(old)} matches')
-          text = text.replace(old, new, 1)
-
-          old = """        width: SLIDE_WIDTH,
-        height: CONTENT_HEIGHT,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '40px 40px 50px 40px',
-        boxSizing: 'border-box',
-"""
-          new = """        width: isSectionTitle ? 1920 : SLIDE_WIDTH,
-        height: isSectionTitle ? 1080 : CONTENT_HEIGHT,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: isSectionTitle ? 0 : '40px 40px 50px 40px',
-        boxSizing: 'border-box',
-"""
-          if text.count(old) != 1:
-              raise SystemExit(f'Could not locate SlideArea outer layout: {text.count(old)} matches')
-          text = text.replace(old, new, 1)
-
-          old = """          width: '100%',
-          aspectRatio: '16 / 9',
-          maxHeight: 810,
-          position: 'relative',
-          overflow: 'hidden',
-          backgroundColor: '#ffffff',
-          border: '1px solid rgba(214, 224, 235, 0.95)',
-          borderRadius: 22,
-          boxShadow: '0 14px 34px rgba(39, 73, 111, 0.10)',
-          opacity,
-"""
-          new = """          width: '100%',
-          height: isSectionTitle ? '100%' : undefined,
-          aspectRatio: isSectionTitle ? undefined : '16 / 9',
-          maxHeight: isSectionTitle ? undefined : 810,
-          position: 'relative',
-          overflow: 'hidden',
-          backgroundColor: '#ffffff',
-          border: isSectionTitle
-            ? 'none'
-            : '1px solid rgba(214, 224, 235, 0.95)',
-          borderRadius: isSectionTitle ? 0 : 22,
-          boxShadow: isSectionTitle
-            ? 'none'
-            : '0 14px 34px rgba(39, 73, 111, 0.10)',
-          opacity,
-"""
-          if text.count(old) != 1:
-              raise SystemExit(f'Could not locate SlideArea inner layout: {text.count(old)} matches')
-          text = text.replace(old, new, 1)
-
-          old = """  const frame = useCurrentFrame();
-  const subtitle = subtitleAtFrame(scene, frame);
-
-  return (
-"""
-          new = """  const frame = useCurrentFrame();
-  const subtitle = subtitleAtFrame(scene, frame);
-  const isSectionTitle = scene.slideType === 'section_title';
-
-  return (
-"""
-          if text.count(old) != 1:
-              raise SystemExit(f'Could not locate SceneCard header: {text.count(old)} matches')
-          text = text.replace(old, new, 1)
-
-          old = """      <div
-        style={{
-          position: 'absolute',
-          right: 0,
-          top: 0,
-          width: SIDEBAR_WIDTH,
-          height: CONTENT_HEIGHT,
-          background:
-            'linear-gradient(180deg, rgba(245,249,254,0.92) 0%, rgba(236,244,252,0.96) 100%)',
-          borderLeft: '1px solid rgba(214, 224, 235, 0.95)',
-          boxSizing: 'border-box',
-          backdropFilter: 'blur(3px)',
-        }}
-      >
-        <ChannelBrand logoSrc={logoSrc} />
-        <Avatar emotion={scene.emotion} mouthCues={scene.mouthCues} />
-      </div>
-"""
-          new = """      {!isSectionTitle ? (
-        <div
-          style={{
-            position: 'absolute',
-            right: 0,
-            top: 0,
-            width: SIDEBAR_WIDTH,
-            height: CONTENT_HEIGHT,
-            background:
-              'linear-gradient(180deg, rgba(245,249,254,0.92) 0%, rgba(236,244,252,0.96) 100%)',
-            borderLeft: '1px solid rgba(214, 224, 235, 0.95)',
-            boxSizing: 'border-box',
-            backdropFilter: 'blur(3px)',
-          }}
-        >
-          <ChannelBrand logoSrc={logoSrc} />
-          <Avatar emotion={scene.emotion} mouthCues={scene.mouthCues} />
-        </div>
-      ) : null}
-"""
-          if text.count(old) != 1:
-              raise SystemExit(f'Could not locate sidebar: {text.count(old)} matches')
-          text = text.replace(old, new, 1)
-
-          path.write_text(text, encoding='utf-8')
-          PY
+          echo "$PATCH_SCRIPT_B64" | base64 -d > /tmp/patch_section_title.py
+          python /tmp/patch_section_title.py
 
       - name: Verify patch markers
         shell: bash
