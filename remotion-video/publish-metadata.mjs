@@ -2,6 +2,10 @@ import OpenAI from 'openai';
 import {mkdir, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 
+const BLOG_ARTICLE_BLOCK = `▼今日の動画のポイント記事（ブログ）
+動画の内容を文字と図解でじっくり復習したい方はこちら
+https://kenmeitoushika.com/archives/xxxx`;
+
 const CHANNEL_BOILERPLATE = `ようこそ「賢明なる投資家チャンネル」へ。
 このチャンネルは、日々のマーケットニュースをコンパクトにまとめ、落ち着いて判断したい個人投資家の皆さまにお届けする投資情報チャンネルです。
 株式・為替・コモディティ（原油や金などの資源）・暗号資産まで、国内外の気になるトピックを
@@ -397,6 +401,31 @@ const xBody = String(data.x_post_body || '').trim();
   };
 };
 
+const buildDescriptionHashtags = ({tags, plan}) => {
+  const securityCode = normalizeSecurityCode(plan);
+  const securityName = normalizeSecurityName(plan);
+  const candidates = [
+    securityName,
+    securityCode,
+    ...(Array.isArray(tags) ? tags : []),
+    securityCode ? '日本株' : '投資',
+    '株式投資',
+  ];
+
+  const result = [];
+  for (const raw of candidates) {
+    const normalized = normalizeTag(raw)
+      .replace(/\s+/g, '')
+      .replace(/[^0-9A-Za-z\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}ー]/gu, '');
+    if (!normalized || normalized.length > 40) continue;
+    if (normalized === '賢明なる投資家チャンネル') continue;
+    const hashtag = `#${normalized}`;
+    if (!result.includes(hashtag)) result.push(hashtag);
+    if (result.length >= 5) break;
+  }
+  return result;
+};
+
 const formatChapterTimestamp = (seconds) => {
   const total = Math.max(0, Math.floor(Number(seconds) || 0));
   const hours = Math.floor(total / 3600);
@@ -573,7 +602,12 @@ export const applyChaptersToPublishMetadata = async ({
     .map((point) => `・${point}`)
     .join('\n');
 
-  const descriptionParts = [metadata.description_intro];
+  const descriptionHashtags = buildDescriptionHashtags({
+    tags: metadata.tags,
+    plan,
+  }).join(' ');
+
+  const descriptionParts = [BLOG_ARTICLE_BLOCK, '', metadata.description_intro];
 
   if (keyPointText) {
     descriptionParts.push('', '【今回のポイント】', keyPointText);
@@ -585,6 +619,10 @@ export const applyChaptersToPublishMetadata = async ({
 
   if (metadata.description_closing) {
     descriptionParts.push('', metadata.description_closing);
+  }
+
+  if (descriptionHashtags) {
+    descriptionParts.push('', descriptionHashtags);
   }
 
   descriptionParts.push('', CHANNEL_BOILERPLATE);
@@ -833,11 +871,18 @@ export const generatePublishMetadata = async ({plan, outputDir}) => {
   const keyPointText = (generated.description_key_points || [])
     .map((point) => `・${point}`)
     .join('\n');
+  const descriptionHashtags = buildDescriptionHashtags({
+    tags: generated.tags,
+    plan,
+  }).join(' ');
   const description = [
+    BLOG_ARTICLE_BLOCK,
+    '',
     generated.description_intro,
     keyPointText ? `\n【今回のポイント】\n${keyPointText}` : '',
     generated.description_closing ? `\n${generated.description_closing}` : '',
-    '',
+    descriptionHashtags ? `\n${descriptionHashtags}` : '',
+     '',
     CHANNEL_BOILERPLATE,
   ]
     .filter((part) => part !== '')
@@ -856,4 +901,4 @@ export const generatePublishMetadata = async ({plan, outputDir}) => {
   return metadata;
 };
 
-export {CHANNEL_BOILERPLATE};
+export {BLOG_ARTICLE_BLOCK, CHANNEL_BOILERPLATE};
