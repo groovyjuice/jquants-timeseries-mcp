@@ -1,0 +1,22 @@
+name: Run Metaplanet 10yen SO 20260912
+
+on:
+  push:
+    branches:
+      - remotion-prototype
+    paths:
+      - '.github/workflows/dispatch-metaplanet-20260912.yml'
+
+jobs:
+  run-video-pipeline:
+    uses: ./.github/workflows/video-pipeline.yml
+    with:
+      project_key: "2026-09-12_metaplanet_10yen_so_reversal"
+      video_plan_file_id: "1re7xManAxlEVI6lx7H-7Yjs3M6AuVOUi"
+      slides_folder_id: "1y9ey9ur3T8KyzICsdzxWGxcZJpIqS9Dw"
+      audio_folder_id: "1KkBcaf3q_BECHcresuO4LahuSAqTddJF"
+      audio_manifest_file_id: "1kXs5piOYMSg51syTDMOPtboiiuTBIrU3"
+      ending_slide_file_id: "1E_g376FHQOt0M7c6gAJAjpNOCnKVpj0k"
+      output_filename: "metaplanet-10yen-so-reversal-20260912.mp4"
+      segment_count: "12"
+    secrets: inherit
