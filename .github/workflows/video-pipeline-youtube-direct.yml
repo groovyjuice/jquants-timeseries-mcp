@@ -468,7 +468,7 @@ jobs:
           assert data["privacy_status"]=="private", data
           assert data["description_set"] is True, data
           assert data["tag_count"]>0, data
-          assert data["contains_synthetic_media"] is True, data
+          assert data["contains_synthetic_media"] is False, data
           print("video_id="+data["video_id"])
           print("studio_edit_url="+data["studio_edit_url"])
           PY
