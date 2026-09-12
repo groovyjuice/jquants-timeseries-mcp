@@ -1,0 +1,31 @@
+name: Check publish metadata logic
+
+on:
+  push:
+    branches:
+      - remotion-prototype
+    paths:
+      - 'remotion-video/publish-metadata.mjs'
+      - '.github/workflows/check-publish-metadata.yml'
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: remotion-prototype
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Syntax check publish metadata module
+        run: node --check remotion-video/publish-metadata.mjs
+      - name: Verify stock-tag safeguards are present
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q '285A' remotion-video/publish-metadata.mjs
+          grep -q 'BAD_FILLER_TAG_PATTERN' remotion-video/publish-metadata.mjs
+          grep -q 'assertPublishMetadataReady' remotion-video/publish-metadata.mjs
+          grep -q 'buildFinalTags' remotion-video/publish-metadata.mjs
