@@ -70,7 +70,7 @@ const main = async () => {
       status: {
         privacyStatus: 'private',
         selfDeclaredMadeForKids: false,
-        containsSyntheticMedia: true,
+        containsSyntheticMedia: false,
       },
     },
     media: {
