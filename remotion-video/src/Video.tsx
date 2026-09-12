@@ -329,6 +329,7 @@ const SlideArea: React.FC<{scene: Scene}> = ({scene}) => {
   const opacity = interpolate(frame, [0, 12], [0, 1], {
     extrapolateRight: 'clamp',
   });
+  const isSectionTitle = scene.slideType === 'section_title';
 
   return (
     <div
@@ -336,26 +337,31 @@ const SlideArea: React.FC<{scene: Scene}> = ({scene}) => {
         position: 'absolute',
         left: 0,
         top: 0,
-        width: SLIDE_WIDTH,
-        height: CONTENT_HEIGHT,
+        width: isSectionTitle ? 1920 : SLIDE_WIDTH,
+        height: isSectionTitle ? 1080 : CONTENT_HEIGHT,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: '40px 40px 50px 40px',
+        padding: isSectionTitle ? 0 : '40px 40px 50px 40px',
         boxSizing: 'border-box',
       }}
     >
       <div
         style={{
           width: '100%',
-          aspectRatio: '16 / 9',
-          maxHeight: 810,
+          height: isSectionTitle ? '100%' : undefined,
+          aspectRatio: isSectionTitle ? undefined : '16 / 9',
+          maxHeight: isSectionTitle ? undefined : 810,
           position: 'relative',
           overflow: 'hidden',
           backgroundColor: '#ffffff',
-          border: '1px solid rgba(214, 224, 235, 0.95)',
-          borderRadius: 22,
-          boxShadow: '0 14px 34px rgba(39, 73, 111, 0.10)',
+          border: isSectionTitle
+            ? 'none'
+            : '1px solid rgba(214, 224, 235, 0.95)',
+          borderRadius: isSectionTitle ? 0 : 22,
+          boxShadow: isSectionTitle
+            ? 'none'
+            : '0 14px 34px rgba(39, 73, 111, 0.10)',
           opacity,
         }}
       >
@@ -529,6 +535,7 @@ const SceneCard: React.FC<{scene: Scene; logoSrc?: string}> = ({
 }) => {
   const frame = useCurrentFrame();
   const subtitle = subtitleAtFrame(scene, frame);
+  const isSectionTitle = scene.slideType === 'section_title';
 
   return (
     <AbsoluteFill
@@ -546,23 +553,25 @@ const SceneCard: React.FC<{scene: Scene; logoSrc?: string}> = ({
 
       <SlideArea scene={scene} />
 
-      <div
-        style={{
-          position: 'absolute',
-          right: 0,
-          top: 0,
-          width: SIDEBAR_WIDTH,
-          height: CONTENT_HEIGHT,
-          background:
-            'linear-gradient(180deg, rgba(245,249,254,0.92) 0%, rgba(236,244,252,0.96) 100%)',
-          borderLeft: '1px solid rgba(214, 224, 235, 0.95)',
-          boxSizing: 'border-box',
-          backdropFilter: 'blur(3px)',
-        }}
-      >
-        <ChannelBrand logoSrc={logoSrc} />
-        <Avatar emotion={scene.emotion} mouthCues={scene.mouthCues} />
-      </div>
+      {!isSectionTitle ? (
+        <div
+          style={{
+            position: 'absolute',
+            right: 0,
+            top: 0,
+            width: SIDEBAR_WIDTH,
+            height: CONTENT_HEIGHT,
+            background:
+              'linear-gradient(180deg, rgba(245,249,254,0.92) 0%, rgba(236,244,252,0.96) 100%)',
+            borderLeft: '1px solid rgba(214, 224, 235, 0.95)',
+            boxSizing: 'border-box',
+            backdropFilter: 'blur(3px)',
+          }}
+        >
+          <ChannelBrand logoSrc={logoSrc} />
+          <Avatar emotion={scene.emotion} mouthCues={scene.mouthCues} />
+        </div>
+      ) : null}
 
       <div
         style={{
