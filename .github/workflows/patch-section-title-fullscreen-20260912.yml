@@ -1,0 +1,191 @@
+name: Patch Section Title Fullscreen 20260912
+
+on:
+  push:
+    branches:
+      - remotion-prototype
+    paths:
+      - ".github/workflows/patch-section-title-fullscreen-20260912.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: remotion-prototype
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Patch section title layout
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('remotion-video/src/Video.tsx')
+          text = path.read_text(encoding='utf-8')
+
+          old = """  const opacity = interpolate(frame, [0, 12], [0, 1], {
+    extrapolateRight: 'clamp',
+  });
+
+  return (
+"""
+          new = """  const opacity = interpolate(frame, [0, 12], [0, 1], {
+    extrapolateRight: 'clamp',
+  });
+  const isSectionTitle = scene.slideType === 'section_title';
+
+  return (
+"""
+          if text.count(old) != 1:
+              raise SystemExit(f'Could not locate SlideArea header: {text.count(old)} matches')
+          text = text.replace(old, new, 1)
+
+          old = """        width: SLIDE_WIDTH,
+        height: CONTENT_HEIGHT,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '40px 40px 50px 40px',
+        boxSizing: 'border-box',
+"""
+          new = """        width: isSectionTitle ? 1920 : SLIDE_WIDTH,
+        height: isSectionTitle ? 1080 : CONTENT_HEIGHT,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: isSectionTitle ? 0 : '40px 40px 50px 40px',
+        boxSizing: 'border-box',
+"""
+          if text.count(old) != 1:
+              raise SystemExit(f'Could not locate SlideArea outer layout: {text.count(old)} matches')
+          text = text.replace(old, new, 1)
+
+          old = """          width: '100%',
+          aspectRatio: '16 / 9',
+          maxHeight: 810,
+          position: 'relative',
+          overflow: 'hidden',
+          backgroundColor: '#ffffff',
+          border: '1px solid rgba(214, 224, 235, 0.95)',
+          borderRadius: 22,
+          boxShadow: '0 14px 34px rgba(39, 73, 111, 0.10)',
+          opacity,
+"""
+          new = """          width: '100%',
+          height: isSectionTitle ? '100%' : undefined,
+          aspectRatio: isSectionTitle ? undefined : '16 / 9',
+          maxHeight: isSectionTitle ? undefined : 810,
+          position: 'relative',
+          overflow: 'hidden',
+          backgroundColor: '#ffffff',
+          border: isSectionTitle
+            ? 'none'
+            : '1px solid rgba(214, 224, 235, 0.95)',
+          borderRadius: isSectionTitle ? 0 : 22,
+          boxShadow: isSectionTitle
+            ? 'none'
+            : '0 14px 34px rgba(39, 73, 111, 0.10)',
+          opacity,
+"""
+          if text.count(old) != 1:
+              raise SystemExit(f'Could not locate SlideArea inner layout: {text.count(old)} matches')
+          text = text.replace(old, new, 1)
+
+          old = """  const frame = useCurrentFrame();
+  const subtitle = subtitleAtFrame(scene, frame);
+
+  return (
+"""
+          new = """  const frame = useCurrentFrame();
+  const subtitle = subtitleAtFrame(scene, frame);
+  const isSectionTitle = scene.slideType === 'section_title';
+
+  return (
+"""
+          if text.count(old) != 1:
+              raise SystemExit(f'Could not locate SceneCard header: {text.count(old)} matches')
+          text = text.replace(old, new, 1)
+
+          old = """      <div
+        style={{
+          position: 'absolute',
+          right: 0,
+          top: 0,
+          width: SIDEBAR_WIDTH,
+          height: CONTENT_HEIGHT,
+          background:
+            'linear-gradient(180deg, rgba(245,249,254,0.92) 0%, rgba(236,244,252,0.96) 100%)',
+          borderLeft: '1px solid rgba(214, 224, 235, 0.95)',
+          boxSizing: 'border-box',
+          backdropFilter: 'blur(3px)',
+        }}
+      >
+        <ChannelBrand logoSrc={logoSrc} />
+        <Avatar emotion={scene.emotion} mouthCues={scene.mouthCues} />
+      </div>
+"""
+          new = """      {!isSectionTitle ? (
+        <div
+          style={{
+            position: 'absolute',
+            right: 0,
+            top: 0,
+            width: SIDEBAR_WIDTH,
+            height: CONTENT_HEIGHT,
+            background:
+              'linear-gradient(180deg, rgba(245,249,254,0.92) 0%, rgba(236,244,252,0.96) 100%)',
+            borderLeft: '1px solid rgba(214, 224, 235, 0.95)',
+            boxSizing: 'border-box',
+            backdropFilter: 'blur(3px)',
+          }}
+        >
+          <ChannelBrand logoSrc={logoSrc} />
+          <Avatar emotion={scene.emotion} mouthCues={scene.mouthCues} />
+        </div>
+      ) : null}
+"""
+          if text.count(old) != 1:
+              raise SystemExit(f'Could not locate sidebar: {text.count(old)} matches')
+          text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Verify patch markers
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq "const isSectionTitle = scene.slideType === 'section_title';" remotion-video/src/Video.tsx
+          grep -Fq "width: isSectionTitle ? 1920 : SLIDE_WIDTH" remotion-video/src/Video.tsx
+          grep -Fq "height: isSectionTitle ? 1080 : CONTENT_HEIGHT" remotion-video/src/Video.tsx
+          grep -Fq "{!isSectionTitle ? (" remotion-video/src/Video.tsx
+
+      - name: Install dependencies
+        working-directory: remotion-video
+        run: npm install --ignore-scripts --prefer-offline
+
+      - name: Compile Remotion compositions
+        working-directory: remotion-video
+        run: npx remotion compositions src/index.tsx
+
+      - name: Commit Video.tsx
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add remotion-video/src/Video.tsx
+          git diff --cached --check
+          git commit -m "Show section title slides fullscreen"
+          git push origin HEAD:remotion-prototype
