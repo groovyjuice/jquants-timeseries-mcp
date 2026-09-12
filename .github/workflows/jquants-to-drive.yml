@@ -1,0 +1,242 @@
+name: J-Quants CSV to Drive
+
+on:
+  workflow_dispatch:
+    inputs:
+      stock:
+        description: "銘柄コードまたは銘柄名"
+        required: true
+        type: string
+      interval:
+        description: "足種"
+        required: true
+        default: "daily"
+        type: choice
+        options:
+          - daily
+          - 1m
+          - 30m
+      from_date:
+        description: "開始日 YYYY-MM-DD（省略可）"
+        required: false
+        type: string
+      to_date:
+        description: "終了日 YYYY-MM-DD（省略可）"
+        required: false
+        type: string
+      filename_mode:
+        description: "auto=期間指定時は日付入り、無指定時は固定名"
+        required: true
+        default: "auto"
+        type: choice
+        options:
+          - auto
+          - stable
+          - dated
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  export:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issues' &&
+       startsWith(github.event.issue.title, '[jquants]') &&
+       github.event.issue.user.login == github.repository_owner)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Resolve request
+        id: request
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_PATH: ${{ github.event_path }}
+          INPUT_STOCK: ${{ inputs.stock }}
+          INPUT_INTERVAL: ${{ inputs.interval }}
+          INPUT_FROM_DATE: ${{ inputs.from_date }}
+          INPUT_TO_DATE: ${{ inputs.to_date }}
+          INPUT_FILENAME_MODE: ${{ inputs.filename_mode }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import re
+
+          event_name = os.environ["EVENT_NAME"]
+          values = {}
+
+          if event_name == "workflow_dispatch":
+              values = {
+                  "stock": os.environ.get("INPUT_STOCK", "").strip(),
+                  "interval": os.environ.get("INPUT_INTERVAL", "daily").strip(),
+                  "from_date": os.environ.get("INPUT_FROM_DATE", "").strip(),
+                  "to_date": os.environ.get("INPUT_TO_DATE", "").strip(),
+                  "filename_mode": os.environ.get("INPUT_FILENAME_MODE", "auto").strip(),
+              }
+          else:
+              with open(os.environ["EVENT_PATH"], encoding="utf-8") as handle:
+                  event = json.load(handle)
+
+              issue = event["issue"]
+              body = issue.get("body") or ""
+              title = issue.get("title") or ""
+
+              for line in body.splitlines():
+                  match = re.match(
+                      r"^\s*(stock|interval|from_date|to_date|filename_mode)\s*:\s*(.*?)\s*$",
+                      line,
+                      re.IGNORECASE,
+                  )
+                  if match:
+                      values[match.group(1).lower()] = match.group(2).strip()
+
+              rest = re.sub(r"^\s*\[jquants\]\s*", "", title, flags=re.IGNORECASE).strip()
+              if not values.get("stock") and rest:
+                  parts = rest.split()
+                  if parts and parts[-1].lower() in {
+                      "daily", "day", "1m", "1min", "30m", "30min"
+                  }:
+                      values["interval"] = parts[-1]
+                      values["stock"] = " ".join(parts[:-1]).strip()
+                  else:
+                      values["stock"] = rest
+
+              values.setdefault("interval", "daily")
+              values.setdefault("from_date", "")
+              values.setdefault("to_date", "")
+              values.setdefault("filename_mode", "auto")
+
+          interval_aliases = {
+              "daily": "daily",
+              "day": "daily",
+              "1m": "1m",
+              "1min": "1m",
+              "30m": "30m",
+              "30min": "30m",
+          }
+          interval = interval_aliases.get(values.get("interval", "").lower())
+          if not values.get("stock"):
+              raise SystemExit("stock が指定されてへんで。")
+          if interval is None:
+              raise SystemExit("interval は daily / 1m / 30m のどれかにしてな。")
+
+          filename_mode = values.get("filename_mode", "auto").lower()
+          if filename_mode not in {"auto", "stable", "dated"}:
+              raise SystemExit("filename_mode は auto / stable / dated のどれかにしてな。")
+
+          out = {
+              "stock": values["stock"],
+              "interval": interval,
+              "from_date": values.get("from_date", ""),
+              "to_date": values.get("to_date", ""),
+              "filename_mode": filename_mode,
+          }
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
+              for key, value in out.items():
+                  value = str(value).replace("\n", " ").replace("\r", " ")
+                  handle.write(f"{key}={value}\n")
+
+          print(json.dumps(out, ensure_ascii=False))
+          PY
+
+      - name: Export and upload CSV
+        id: export
+        shell: bash
+        env:
+          JQUANTS_API_KEY: ${{ secrets.JQUANTS_API_KEY }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+          GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+          STOCK: ${{ steps.request.outputs.stock }}
+          INTERVAL: ${{ steps.request.outputs.interval }}
+          FROM_DATE: ${{ steps.request.outputs.from_date }}
+          TO_DATE: ${{ steps.request.outputs.to_date }}
+          FILENAME_MODE: ${{ steps.request.outputs.filename_mode }}
+        run: |
+          set -euo pipefail
+          ARGS=(
+            --stock "$STOCK"
+            --interval "$INTERVAL"
+            --filename-mode "$FILENAME_MODE"
+            --output-dir out
+          )
+          if [ -n "$FROM_DATE" ]; then
+            ARGS+=(--from-date "$FROM_DATE")
+          fi
+          if [ -n "$TO_DATE" ]; then
+            ARGS+=(--to-date "$TO_DATE")
+          fi
+          python actions_export.py "${ARGS[@]}"
+
+      - name: Keep CSV as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jquants-csv-${{ github.run_id }}
+          path: out/*.csv
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Report success on issue
+        if: success() && github.event_name == 'issues'
+        uses: actions/github-script@v7
+        env:
+          FILENAME: ${{ steps.export.outputs.filename }}
+          COMPANY: ${{ steps.export.outputs.company_name }}
+          CODE: ${{ steps.export.outputs.company_code }}
+          SERIES: ${{ steps.export.outputs.series_name }}
+          ROW_COUNT: ${{ steps.export.outputs.row_count }}
+          FIRST_DATE: ${{ steps.export.outputs.first_date }}
+          LAST_DATE: ${{ steps.export.outputs.last_date }}
+          DRIVE_ACTION: ${{ steps.export.outputs.drive_action }}
+        with:
+          script: |
+            const body = [
+              "✅ J-Quants → Google Drive 保存完了",
+              "",
+              `- 銘柄: ${process.env.COMPANY} (${process.env.CODE})`,
+              `- 足種: ${process.env.SERIES}`,
+              `- 件数: ${process.env.ROW_COUNT}`,
+              `- 期間: ${process.env.FIRST_DATE} ～ ${process.env.LAST_DATE}`,
+              `- CSV: \`${process.env.FILENAME}\``,
+              `- Drive: ${process.env.DRIVE_ACTION || "saved"}`,
+            ].join("\n");
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              state: "closed",
+            });
+
+      - name: Report failure on issue
+        if: failure() && github.event_name == 'issues'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: "❌ J-Quants CSV保存に失敗したで。Actionsの実行ログを確認してな。",
+            });
