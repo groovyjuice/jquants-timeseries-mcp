@@ -1,0 +1,22 @@
+name: Run Kioxia 20260912
+
+on:
+  push:
+    branches:
+      - remotion-prototype
+    paths:
+      - '.github/workflows/run-kioxia-20260912.yml'
+
+jobs:
+  run-video-pipeline:
+    uses: ./.github/workflows/video-pipeline-youtube-direct.yml
+    with:
+      project_key: kioxia-20260912
+      video_plan_file_id: 1Wz2i1s_sne-IyjHUYw38z93L5e5GFWwe
+      slides_folder_id: 1c-LCqx_0WYLV7eARIx085UNKMG21LD8U
+      audio_folder_id: 1Q_Qdi1z3Cem9YSttcVDlUWz0NDgiuKC3
+      audio_manifest_file_id: 1sBzqvAhvv4qocS3QhA0neLw1EEmDOB6r
+      ending_slide_file_id: 1E_g376FHQOt0M7c6gAJAjpNOCnKVpj0k
+      output_filename: kioxia-sandisk-offhours-20260912.mp4
+      segment_count: '12'
+    secrets: inherit
