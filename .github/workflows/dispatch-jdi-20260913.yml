@@ -1,0 +1,26 @@
+name: Run JDI Latest 20260913
+
+on:
+  push:
+    branches:
+      - remotion-prototype
+    paths:
+      - '.github/workflows/dispatch-jdi-20260913.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  run-video-pipeline:
+    uses: ./.github/workflows/video-pipeline-youtube-direct.yml
+    with:
+      project_key: "2026-09-13_JDI最新動向_米国戦略・工場再編・5G新技術"
+      video_plan_file_id: "1HoD2oym_9XXjRNzNXVRMebiDLwzMWyAk"
+      slides_folder_id: "1o7WDU8CbDFx3wV_tJiPvkWELnoCNHynD"
+      audio_folder_id: "1ytqgbfoNoNLKv4GYFTXW1zfJMunFxmY9"
+      audio_manifest_file_id: "1AuQDAQyOJYHbN54eKlhhimwA6tuF5CQS"
+      ending_slide_file_id: "1E_g376FHQOt0M7c6gAJAjpNOCnKVpj0k"
+      output_filename: "jdi-latest-20260913.mp4"
+      segment_count: "12"
+    secrets: inherit
