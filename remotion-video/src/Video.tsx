@@ -573,31 +573,33 @@ const SceneCard: React.FC<{scene: Scene; logoSrc?: string}> = ({
         </div>
       ) : null}
 
-      <div
-        style={{
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          bottom: 0,
-          height: SUBTITLE_HEIGHT,
-          padding: '22px 72px',
-          boxSizing: 'border-box',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: 54,
-          fontWeight: 700,
-          lineHeight: 1.35,
-          color: '#111827',
-          background:
-            'linear-gradient(180deg, rgba(255,255,255,0.94) 0%, rgba(248,251,255,0.98) 100%)',
-          borderTop: '2px solid rgba(214, 224, 235, 0.95)',
-          textAlign: 'center',
-          zIndex: 20,
-        }}
-      >
-        {subtitle}
-      </div>
+      {!isSectionTitle ? (
+        <div
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: SUBTITLE_HEIGHT,
+            padding: '22px 72px',
+            boxSizing: 'border-box',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 54,
+            fontWeight: 700,
+            lineHeight: 1.35,
+            color: '#111827',
+            background:
+              'linear-gradient(180deg, rgba(255,255,255,0.94) 0%, rgba(248,251,255,0.98) 100%)',
+            borderTop: '2px solid rgba(214, 224, 235, 0.95)',
+            textAlign: 'center',
+            zIndex: 20,
+          }}
+        >
+          {subtitle}
+        </div>
+      ) : null}
     </AbsoluteFill>
   );
 };
