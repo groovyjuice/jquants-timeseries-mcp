@@ -1,0 +1,22 @@
+name: Run SBG OpenAI IPO Delay 20260913
+
+on:
+  push:
+    branches:
+      - remotion-prototype
+    paths:
+      - '.github/workflows/dispatch-sbg-openai-20260913.yml'
+
+jobs:
+  run-video-pipeline:
+    uses: ./.github/workflows/video-pipeline-youtube-direct.yml
+    with:
+      project_key: "2026-09-13_sbg_openai_ipo_delay"
+      video_plan_file_id: "104ZU975GKU18U8o8nCFRZhEMWPXZuEpS"
+      slides_folder_id: "1HWHvtsIzLUKuU0ebzCUBwkVChBnzPEwd"
+      audio_folder_id: "1MW9-TdrRYq9yl-0fSerVESdfKyS2JzKB"
+      audio_manifest_file_id: "12xWSFbso3nm_oK7-IZ_3Fvck6PXuVtTJ"
+      ending_slide_file_id: "1E_g376FHQOt0M7c6gAJAjpNOCnKVpj0k"
+      output_filename: "sbg-openai-ipo-delay-20260913.mp4"
+      segment_count: "12"
+    secrets: inherit
