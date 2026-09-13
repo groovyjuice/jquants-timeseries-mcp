@@ -24,3 +24,5 @@ jobs:
       output_filename: "sbg-openai-ipo-delay-20260913.mp4"
       segment_count: "12"
     secrets: inherit
+
+# rerun-trigger: updated-narration-audio-20260913-v2
