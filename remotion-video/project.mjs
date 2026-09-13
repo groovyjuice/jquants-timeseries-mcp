@@ -11,6 +11,21 @@ const validEmotions = new Set(['normal', 'surprise', 'serious', 'smile']);
 const asString = (value, fallback = '') =>
   typeof value === 'string' ? value : fallback;
 
+const assertSectionTitlePropagation = (plan, scenes, context) => {
+  const expected = plan.slides.filter(
+    (slide) => asString(slide.type, 'content') === 'section_title',
+  ).length;
+  const actual = scenes.filter(
+    (scene) => scene.slideType === 'section_title',
+  ).length;
+
+  if (expected !== actual) {
+    throw new Error(
+      `${context}: section_title propagation mismatch (plan=${expected}, scenes=${actual})`,
+    );
+  }
+};
+
 
 const getScriptBlocksByLineRange = (script, startLine, endLine) => {
   const lines = String(script ?? '').split(/\r?\n/);
@@ -270,9 +285,13 @@ export const prepareDriveProject = async ({
       ),
       narration: asString(slide.narration, asString(slide.source_text, '')),
       emotion: validEmotions.has(slide.emotion) ? slide.emotion : 'normal',
+      slideType: asString(slide.type, 'content'),
+      section: asString(slide.section, ''),
       slideSrc: `${publicPrefix}/${localFilename}`,
     });
   }
+
+  assertSectionTitlePropagation(plan, scenes, 'Drive project');
 
   return {
     plan,
@@ -359,6 +378,8 @@ export const prepareSpriteProject = async ({
       ),
       narration: asString(slide.narration, asString(slide.source_text, '')),
       emotion: validEmotions.has(slide.emotion) ? slide.emotion : 'normal',
+      slideType: asString(slide.type, 'content'),
+      section: asString(slide.section, ''),
     };
 
     if (slide.fixed_asset) {
@@ -377,6 +398,8 @@ export const prepareSpriteProject = async ({
       slideSpriteRows: rows,
     };
   });
+
+  assertSectionTitlePropagation(plan, scenes, 'Sprite project');
 
   return {
     plan,
@@ -448,11 +471,15 @@ export const prepareEmbeddedSpriteProject = async ({
     ),
     narration: asString(slide.narration, asString(slide.source_text, '')),
     emotion: validEmotions.has(slide.emotion) ? slide.emotion : 'normal',
+    slideType: asString(slide.type, 'content'),
+    section: asString(slide.section, ''),
     slideSpriteSrc: `${publicPrefix}/${spriteFilename}`,
     slideSpriteIndex: index,
     slideSpriteColumns: columns,
     slideSpriteRows: rows,
   }));
+
+  assertSectionTitlePropagation(plan, scenes, 'Embedded sprite project');
 
   return {
     plan,
@@ -510,6 +537,8 @@ export const prepareRepoPlanProject = async ({planPath}) => {
       ? slide.slide_text.map((item) => String(item))
       : [],
   }));
+
+  assertSectionTitlePropagation(plan, scenes, 'Repo plan project');
 
   return {
     plan,
@@ -575,9 +604,13 @@ export const prepareLocalProject = async ({
       ),
       narration: asString(slide.narration, asString(slide.source_text, '')),
       emotion: validEmotions.has(slide.emotion) ? slide.emotion : 'normal',
+      slideType: asString(slide.type, 'content'),
+      section: asString(slide.section, ''),
       slideSrc: `${publicPrefix}/${localFilename}`,
     };
   });
+
+  assertSectionTitlePropagation(plan, scenes, 'Local project');
 
   return {
     plan,
