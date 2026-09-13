@@ -1,0 +1,112 @@
+name: J-Quants Request File
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "requests/latest.json"
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Read request
+        id: request
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+
+          with open("requests/latest.json", encoding="utf-8") as handle:
+              req = json.load(handle)
+
+          stock = str(req.get("stock", "")).strip()
+          interval = str(req.get("interval", "daily")).strip().lower()
+          from_date = str(req.get("from_date", "")).strip()
+          to_date = str(req.get("to_date", "")).strip()
+          filename_mode = str(req.get("filename_mode", "auto")).strip().lower()
+
+          aliases = {
+              "daily": "daily",
+              "day": "daily",
+              "1m": "1m",
+              "1min": "1m",
+              "30m": "30m",
+              "30min": "30m",
+          }
+          interval = aliases.get(interval, "")
+
+          if not stock:
+              raise SystemExit("stock が指定されてへんで。")
+          if not interval:
+              raise SystemExit("interval は daily / 1m / 30m のどれかにしてな。")
+          if filename_mode not in {"auto", "stable", "dated"}:
+              raise SystemExit("filename_mode は auto / stable / dated のどれかにしてな。")
+
+          values = {
+              "stock": stock,
+              "interval": interval,
+              "from_date": from_date,
+              "to_date": to_date,
+              "filename_mode": filename_mode,
+          }
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
+              for key, value in values.items():
+                  safe = str(value).replace("\n", " ").replace("\r", " ")
+                  handle.write(f"{key}={safe}\n")
+
+          print(json.dumps(values, ensure_ascii=False))
+          PY
+
+      - name: Export and upload CSV
+        id: export
+        shell: bash
+        env:
+          JQUANTS_API_KEY: ${{ secrets.JQUANTS_API_KEY }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+          GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+          STOCK: ${{ steps.request.outputs.stock }}
+          INTERVAL: ${{ steps.request.outputs.interval }}
+          FROM_DATE: ${{ steps.request.outputs.from_date }}
+          TO_DATE: ${{ steps.request.outputs.to_date }}
+          FILENAME_MODE: ${{ steps.request.outputs.filename_mode }}
+        run: |
+          set -euo pipefail
+          ARGS=(
+            --stock "$STOCK"
+            --interval "$INTERVAL"
+            --filename-mode "$FILENAME_MODE"
+            --output-dir out
+          )
+          if [ -n "$FROM_DATE" ]; then
+            ARGS+=(--from-date "$FROM_DATE")
+          fi
+          if [ -n "$TO_DATE" ]; then
+            ARGS+=(--to-date "$TO_DATE")
+          fi
+          python actions_export.py "${ARGS[@]}"
+
+      - name: Keep CSV as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jquants-csv-${{ github.run_id }}
+          path: out/*.csv
+          if-no-files-found: error
+          retention-days: 3
