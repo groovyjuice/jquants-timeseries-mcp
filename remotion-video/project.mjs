@@ -7,6 +7,7 @@ import {
 } from './drive.mjs';
 
 const validEmotions = new Set(['normal', 'surprise', 'serious', 'smile']);
+const validPoses = new Set(['normal', 'point_up', 'caution', 'positive', 'explain']);
 
 const asString = (value, fallback = '') =>
   typeof value === 'string' ? value : fallback;
@@ -285,6 +286,7 @@ export const prepareDriveProject = async ({
       ),
       narration: asString(slide.narration, asString(slide.source_text, '')),
       emotion: validEmotions.has(slide.emotion) ? slide.emotion : 'normal',
+      pose: validPoses.has(slide.pose) ? slide.pose : 'normal',
       slideType: asString(slide.type, 'content'),
       section: asString(slide.section, ''),
       slideSrc: `${publicPrefix}/${localFilename}`,
@@ -378,6 +380,7 @@ export const prepareSpriteProject = async ({
       ),
       narration: asString(slide.narration, asString(slide.source_text, '')),
       emotion: validEmotions.has(slide.emotion) ? slide.emotion : 'normal',
+      pose: validPoses.has(slide.pose) ? slide.pose : 'normal',
       slideType: asString(slide.type, 'content'),
       section: asString(slide.section, ''),
     };
@@ -604,6 +607,7 @@ export const prepareLocalProject = async ({
       ),
       narration: asString(slide.narration, asString(slide.source_text, '')),
       emotion: validEmotions.has(slide.emotion) ? slide.emotion : 'normal',
+      pose: validPoses.has(slide.pose) ? slide.pose : 'normal',
       slideType: asString(slide.type, 'content'),
       section: asString(slide.section, ''),
       slideSrc: `${publicPrefix}/${localFilename}`,

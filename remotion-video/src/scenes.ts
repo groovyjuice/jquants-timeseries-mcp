@@ -13,6 +13,7 @@ export type Scene = {
   body: string;
   narration?: string;
   emotion: 'normal' | 'surprise' | 'serious' | 'smile';
+  pose?: 'normal' | 'point_up' | 'caution' | 'positive' | 'explain';
   audioSrc?: string;
   mouthCues?: MouthState[];
   subtitleCues?: SubtitleCue[];

@@ -17,6 +17,7 @@ import {
   type MouthState,
   type Scene,
 } from './scenes';
+import {LayeredAvatar} from './LayeredAvatar';
 
 export type VideoProps = {
   scenes?: Scene[];
@@ -569,7 +570,25 @@ const SceneCard: React.FC<{scene: Scene; logoSrc?: string}> = ({
           }}
         >
           <ChannelBrand logoSrc={logoSrc} />
-          <Avatar emotion={scene.emotion} mouthCues={scene.mouthCues} />
+          <div
+            style={{
+              position: 'absolute',
+              left: 10,
+              bottom: 18,
+              width: 460,
+              height: 460,
+            }}
+          >
+            <LayeredAvatar
+              pose={scene.pose ?? 'normal'}
+              emotion={scene.emotion}
+              mouthCues={scene.mouthCues}
+              size={460}
+              bobAmount={2.2}
+              enableBlink
+              showShadow
+            />
+          </div>
         </div>
       ) : null}
 

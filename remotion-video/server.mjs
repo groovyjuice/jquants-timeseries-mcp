@@ -100,6 +100,14 @@ const validateProps = (props) => {
     ) {
       throw new Error(`Invalid narration at scene ${index}`);
     }
+
+    if (
+      scene.pose !== undefined &&
+      !['normal', 'point_up', 'caution', 'positive', 'explain'].includes(scene.pose)
+    ) {
+      throw new Error(`Invalid scene pose at index ${index}`);
+    }
+
   }
 
   return props;
@@ -673,6 +681,11 @@ const createRenderPackage = async ({
 
   await rm(stageDir, {recursive: true, force: true}).catch(() => {});
   await mkdir(path.join(stageDir, 'public', 'generated'), {recursive: true});
+
+  const characterSourceDir = path.join(cwd, 'public', 'characters');
+  const characterTargetDir = path.join(stageDir, 'public', 'characters');
+  await stat(characterSourceDir);
+  await cp(characterSourceDir, characterTargetDir, {recursive: true});
 
   await writeFile(
     path.join(stageDir, 'props.json'),
