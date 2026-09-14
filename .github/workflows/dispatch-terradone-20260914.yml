@@ -1,4 +1,4 @@
-name: Run Terra Drone 278A 20260914
+name: Run Terra Drone 278A 20260914 Rebuild v2
 
 on:
   push:
@@ -19,8 +19,8 @@ jobs:
       video_plan_file_id: "12b8N4X3TYIzLdPrF_TiBmotr9cWj6rAg"
       slides_folder_id: "1g0f3CO7Sp1Au3KiHweYFTlGG5vjhxgpm"
       audio_folder_id: "1TsF-G4MMUWGjVilXCGw9ww2I2DjM2T83"
-      audio_manifest_file_id: "1_p-Q3VYLTE37taCh4Qcm0hbNew5am0fU"
+      audio_manifest_file_id: "1v6tWTJwDfi4PHR1TX1pJybyzAxgIsB8r"
       ending_slide_file_id: "1E_g376FHQOt0M7c6gAJAjpNOCnKVpj0k"
-      output_filename: "terradone-278a-20260914.mp4"
+      output_filename: "terradone-278a-20260914-v2.mp4"
       segment_count: "12"
     secrets: inherit
