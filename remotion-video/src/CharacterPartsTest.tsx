@@ -38,7 +38,9 @@ export const CharacterPartsTest: React.FC = () => {
     emotion === 'normal' || emotion === 'smile'
       ? mouthPhase < 10
         ? 'smile-closed'
-        : 'smile-open'
+        : mouthPhase < 20
+          ? 'smile-half'
+          : 'smile-open'
       : mouthPhase < 10
         ? 'closed'
         : mouthPhase < 20
@@ -150,7 +152,7 @@ export const CharacterPartsTest: React.FC = () => {
         >
           mouth: {mouthLabel}
           <br />
-          normal: smile mouth pair
+          normal/smile: closed → half → open
           <br />
           blink: 約4秒周期 / 5 frames
         </div>
