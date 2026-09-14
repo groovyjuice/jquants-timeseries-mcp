@@ -36,7 +36,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Install dependencies
         working-directory: remotion-video
@@ -64,12 +64,39 @@ jobs:
         working-directory: remotion-video
         run: node prepare-character-assets.mjs
 
-      - name: Validate PNG canvases and alpha
+      - name: Normalize character canvases to 1280x1448
         working-directory: remotion-video
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p out
+          : > out/character-assets-raw-info.tsv
+          for f in public/characters/*.png; do
+            info=$(ffprobe -v error -select_streams v:0 \
+              -show_entries stream=width,height,pix_fmt \
+              -of csv=p=0 "$f")
+            printf '%s\t%s\n' "$(basename "$f")" "$info" | tee -a out/character-assets-raw-info.tsv
+
+            width=$(printf '%s' "$info" | cut -d, -f1)
+            height=$(printf '%s' "$info" | cut -d, -f2)
+            if [ "$width" -lt 1280 ] || [ "$height" -lt 1448 ]; then
+              echo "Asset is smaller than reference canvas and cannot be safely cropped: $f ($info)" >&2
+              exit 1
+            fi
+            if [ "$width" != "1280" ] || [ "$height" != "1448" ]; then
+              tmp="${f%.png}.normalized.png"
+              ffmpeg -v error -y -i "$f" \
+                -vf "crop=1280:1448:0:0,format=rgba" \
+                -frames:v 1 "$tmp"
+              mv "$tmp" "$f"
+            fi
+          done
+
+      - name: Validate normalized PNG canvases and alpha
+        working-directory: remotion-video
+        shell: bash
+        run: |
+          set -euo pipefail
           : > out/character-assets-info.tsv
           for f in public/characters/*.png; do
             info=$(ffprobe -v error -select_streams v:0 \
@@ -88,12 +115,12 @@ jobs:
           if len(rows) != 23:
               raise SystemExit(f'Expected 23 PNG assets, got {len(rows)}')
           dims={(w,h) for _,w,h,_ in rows}
-          if len(dims) != 1:
-              raise SystemExit(f'Character canvas mismatch: {sorted(dims)}')
+          if dims != {(1280,1448)}:
+              raise SystemExit(f'Character canvas mismatch after normalization: {sorted(dims)}')
           no_alpha=[(name,pix) for name,_,_,pix in rows if 'a' not in pix]
           if no_alpha:
               raise SystemExit(f'PNG assets without alpha-capable pixel format: {no_alpha}')
-          print(f'Validated 23 assets: canvas={next(iter(dims))}, alpha-capable PNGs=23')
+          print('Validated 23 assets: canvas=1280x1448, alpha-capable PNGs=23')
           PY
 
       - name: Render Remotion character test
@@ -143,6 +170,7 @@ jobs:
           path: |
             remotion-video/out/character-parts-test.mp4
             remotion-video/out/character-parts-contact-sheet.png
+            remotion-video/out/character-assets-raw-info.tsv
             remotion-video/out/character-assets-info.tsv
             remotion-video/out/media-info.json
           retention-days: 7
