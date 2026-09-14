@@ -1,0 +1,26 @@
+name: Run Terra Drone 278A 20260914
+
+on:
+  push:
+    branches:
+      - remotion-prototype
+    paths:
+      - '.github/workflows/dispatch-terradone-20260914.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  run-video-pipeline:
+    uses: ./.github/workflows/video-pipeline-youtube-direct.yml
+    with:
+      project_key: "2026-09-14_TerraDrone_278A_決算後最新動向"
+      video_plan_file_id: "12b8N4X3TYIzLdPrF_TiBmotr9cWj6rAg"
+      slides_folder_id: "1g0f3CO7Sp1Au3KiHweYFTlGG5vjhxgpm"
+      audio_folder_id: "1TsF-G4MMUWGjVilXCGw9ww2I2DjM2T83"
+      audio_manifest_file_id: "1_p-Q3VYLTE37taCh4Qcm0hbNew5am0fU"
+      ending_slide_file_id: "1E_g376FHQOt0M7c6gAJAjpNOCnKVpj0k"
+      output_filename: "terradone-278a-20260914.mp4"
+      segment_count: "12"
+    secrets: inherit
