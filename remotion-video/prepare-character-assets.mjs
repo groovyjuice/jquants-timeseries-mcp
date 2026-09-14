@@ -28,6 +28,7 @@ const expected = [
   'mouth_half.png',
   'mouth_open.png',
   'mouth_smile_closed.png',
+  'mouth_smile_half.png',
   'mouth_smile_open.png',
 ];
 
@@ -62,6 +63,6 @@ for (const name of expected) {
   console.log(`${name}\t${info.size} bytes\t${file.id}`);
 }
 
-console.log(`Character assets ready: ${expected.length}/23`);
+console.log(`Character assets ready: ${expected.length}/24`);
 console.log(`Source Drive folder: ${folderId}`);
 console.log(`Output: ${outputDir}`);
