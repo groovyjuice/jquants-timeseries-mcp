@@ -1,4 +1,3 @@
-import OpenAI from 'openai';
 import {mkdir, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 
@@ -26,72 +25,13 @@ https://x.com/kenmei_toushika
 ※本チャンネルの内容は情報提供のみを目的としており、特定の銘柄・金融商品の売買を推奨するものではありません。投資判断は必ずご自身の判断と責任にてお願いいたします。
 ※本チャンネルでは、AIツールを最大限活用しながら、最新情報をわかりやすくお届けできるよう工夫しています。`;
 
-const schema = {
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    title_candidates: {
-      type: 'array',
-      minItems: 10,
-      maxItems: 10,
-      items: {type: 'string'},
-    },
-    description_intro: {type: 'string'},
-    description_key_points: {
-      type: 'array',
-      minItems: 3,
-      maxItems: 6,
-      items: {type: 'string'},
-    },
-    description_closing: {type: 'string'},
-    tags: {
-      type: 'array',
-      minItems: 10,
-      maxItems: 30,
-      items: {type: 'string'},
-    },
-    x_post_body: {type: 'string'},
-  },
-  required: [
-    'title_candidates',
-    'description_intro',
-    'description_key_points',
-    'description_closing',
-    'tags',
-    'x_post_body',
-  ],
-};
-
-const compactSource = (plan) => {
-  const slides = Array.isArray(plan?.slides) ? plan.slides : [];
-  const title =
-    plan?.video_title ||
-    plan?.title ||
-    slides[0]?.display_title ||
-    slides[0]?.headline ||
-    '';
-
-  const narration = slides
-    .map((slide) => slide?.narration || slide?.source_text || '')
-    .filter(Boolean)
-    .join('\n');
-
-  return [
-    title ? `動画テーマ: ${title}` : '',
-    narration ? `動画ナレーション:\n${narration}` : '',
-  ]
-    .filter(Boolean)
-    .join('\n\n');
-};
-
-const xEstimatedLength = (body) => {
-  const placeholder = '[動画URL]';
-  const text = `${body.trim()}\n${placeholder}`;
-  // X shortens HTTP(S) URLs. Reserve 23 characters for the eventual video URL.
-  return Array.from(text.replace(placeholder, 'x'.repeat(23))).length;
-};
-
 const SECURITY_CODE_PATTERN = /^(?:\d{4}|\d{3}[A-Z])$/i;
+
+const cleanTag = (value) =>
+  String(value ?? '')
+    .trim()
+    .replace(/^#+/, '')
+    .replace(/\s+/g, ' ');
 
 const normalizeSecurityCodeValue = (raw) => {
   if (raw === null || raw === undefined) return null;
@@ -100,75 +40,17 @@ const normalizeSecurityCodeValue = (raw) => {
 };
 
 const normalizeSecurityCode = (plan) => {
-  const direct = [
+  for (const raw of [
     plan?.security_code,
     plan?.stock_code,
     plan?.ticker_code,
     plan?.code,
-  ];
-
-  for (const raw of direct) {
+  ]) {
     const normalized = normalizeSecurityCodeValue(raw);
     if (normalized) return normalized;
   }
-
-  const labeledSource = [
-    plan?.video_title,
-    plan?.title,
-    plan?.topic,
-    plan?.project_key,
-    compactSource(plan),
-  ]
-    .filter(Boolean)
-    .join('\n');
-
-  const labeledMatch = labeledSource.match(
-    /(?:銘柄コード|証券コード|株式コード|stock\s*code|security\s*code)\s*[：:]?\s*(\d{4}|\d{3}[A-Z])\b/i,
-  );
-  if (labeledMatch) return normalizeSecurityCodeValue(labeledMatch[1]);
-
-  // New TSE codes such as 285A are distinctive enough to recover from titles/project keys.
-  // Numeric-only 4-digit codes are not inferred without a label because dates/prices can collide.
-  const titleLikeSource = [
-    plan?.video_title,
-    plan?.title,
-    plan?.topic,
-    plan?.project_key,
-  ]
-    .filter(Boolean)
-    .join(' ');
-  const alphaCodeMatch = titleLikeSource.match(/(?:^|[^0-9A-Z])(\d{3}[A-Z])(?:$|[^0-9A-Z])/i);
-  return alphaCodeMatch ? normalizeSecurityCodeValue(alphaCodeMatch[1]) : null;
+  return null;
 };
-
-const hasUnresolvedSecurityCode = (plan) => {
-  if (!plan || !Object.prototype.hasOwnProperty.call(plan, 'security_code')) {
-    return false;
-  }
-  if (normalizeSecurityCode(plan)) return false;
-
-  const note = String(plan?.security_code_note || '');
-  return (
-    /(銘柄コード|証券コード)/.test(note) &&
-    /(未設定|要確認|確認する|別途確認)/.test(note)
-  );
-};
-
-const assertPublishMetadataReady = (plan) => {
-  if (!hasUnresolvedSecurityCode(plan)) return;
-  throw new Error(
-    'Japanese listed-equity security code is unresolved. Set video_plan.security_code before generating publish metadata so the YouTube tags cannot be uploaded without the stock code.',
-  );
-};
-
-const normalizeTag = (value) =>
-  String(value || '')
-    .trim()
-    .replace(/^#+/, '')
-    .replace(/\s+/g, ' ')
-    .slice(0, 60);
-
-const BAD_FILLER_TAG_PATTERN = /^(?:投資解説|動画解説|解説|タグ)\d+$/;
 
 const normalizeSecurityName = (plan) =>
   [
@@ -179,226 +61,115 @@ const normalizeSecurityName = (plan) =>
     plan?.company,
     plan?.brand_name,
   ]
-    .map(normalizeTag)
+    .map(cleanTag)
     .find(Boolean) || null;
 
-const STOCK_GENERIC_TAGS = [
-  '日本株',
-  '株式投資',
-  '個人投資家',
-  '銘柄分析',
-  '企業分析',
-  '株価',
-  '投資ニュース',
-  'マーケット',
-  '市場分析',
-  '資産運用',
-];
-
-const GENERAL_GENERIC_TAGS = [
-  '投資',
-  '個人投資家',
-  '投資ニュース',
-  'マーケット',
-  '市場分析',
-  '資産運用',
-  'ニュース解説',
-  '相場',
-  '経済ニュース',
-  '投資情報',
-];
-
-const TAG_STOPWORDS = new Set([
-  'チャンネル',
-  'ポイント',
-  'ニュース',
-  'マーケット',
-  'データ',
-  'モデル',
-  'リバウンド',
-  'ポジション',
-  '今回',
-  '今後',
-]);
-
-const KNOWN_TOPIC_TERMS = [
-  'NAND',
-  'SSD',
-  'AI',
-  'PTS',
-  'ADR',
-  'Hyperliquid',
-  'DeepSeek',
-  'KIOXIA',
-  '半導体',
-  '半導体株',
-  'メモリー',
-  'フラッシュメモリー',
-  'データセンター',
-  '株式分割',
-  '自己株取得',
-  '信用需給',
-  '信用買い残',
-  'NAND市況',
-  '業績',
-  '財務',
-];
-
-const countOccurrences = (haystack, needle) => {
-  if (!needle) return 0;
-  let count = 0;
-  let cursor = 0;
-  while (true) {
-    const index = haystack.indexOf(needle, cursor);
-    if (index < 0) return count;
-    count += 1;
-    cursor = index + needle.length;
-  }
-};
-
-const extractFrequentProperTerms = (text) => {
-  const counts = new Map();
-  const add = (raw) => {
-    const term = normalizeTag(raw);
-    if (
-      term.length < 2 ||
-      term.length > 30 ||
-      TAG_STOPWORDS.has(term) ||
-      BAD_FILLER_TAG_PATTERN.test(term)
-    ) {
-      return;
-    }
-    counts.set(term, (counts.get(term) || 0) + 1);
-  };
-
-  for (const match of text.matchAll(/[\p{Script=Katakana}ー]{3,30}/gu)) {
-    add(match[0]);
-  }
-  for (const match of text.matchAll(/[A-Za-z][A-Za-z0-9.+-]{1,29}/g)) {
-    add(match[0]);
-  }
-
-  return [...counts.entries()]
-    .filter(([, count]) => count >= 2)
-    .sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)
-    .map(([term]) => term)
-    .slice(0, 14);
-};
-
-const extractPlanTopicTags = (plan) => {
-  const slides = Array.isArray(plan?.slides) ? plan.slides : [];
-  const source = compactSource(plan);
-  const explicitNames = [
-    plan?.security_name,
-    plan?.company_name,
-    plan?.issuer_name,
-    plan?.stock_name,
-    plan?.company,
-    plan?.brand_name,
-  ]
-    .map(normalizeTag)
-    .filter(Boolean);
-
-  const shortStructuredPhrases = [];
-  for (const slide of slides) {
-    const values = [slide?.section, ...(Array.isArray(slide?.slide_text) ? slide.slide_text : [])];
-    for (const value of values) {
-      const text = normalizeTag(value);
-      if (!text || text.length < 2 || text.length > 24) continue;
-      if (/[。！？!?]/.test(text)) continue;
-      shortStructuredPhrases.push(text);
-    }
-  }
-
-  const knownTerms = KNOWN_TOPIC_TERMS.filter((term) =>
-    source.toLowerCase().includes(term.toLowerCase()),
-  ).sort((a, b) => countOccurrences(source.toLowerCase(), b.toLowerCase()) - countOccurrences(source.toLowerCase(), a.toLowerCase()));
-
-  return [
-    ...explicitNames,
-    ...extractFrequentProperTerms(source),
-    ...knownTerms,
-    ...shortStructuredPhrases,
-  ];
-};
-
-const buildFinalTags = ({tags, plan}) => {
-  const securityCode = normalizeSecurityCode(plan);
-  const securityName = normalizeSecurityName(plan);
-  const required = ['賢明なる投資家チャンネル'];
-  if (securityCode) {
-    required.push(securityCode);
-    if (securityName) {
-      required.push(`${securityName}${securityCode}`);
-      required.push(`${securityCode}${securityName}`);
-    }
-  }
-
-  const extracted = extractPlanTopicTags(plan);
-  const generic = securityCode ? STOCK_GENERIC_TAGS : GENERAL_GENERIC_TAGS;
-  const merged = [
-    ...required,
-    ...extracted,
-    ...(Array.isArray(tags) ? tags : []),
-    ...generic,
-  ]
-    .map(normalizeTag)
-    .filter(Boolean)
-    .filter((tag) => !BAD_FILLER_TAG_PATTERN.test(tag));
-
-  return [...new Set(merged)].slice(0, 30);
-};
-
-const validate = (data) => {
-  if (!Array.isArray(data.title_candidates) || data.title_candidates.length !== 10) {
-    throw new Error('metadata must contain exactly 10 title candidates');
-  }
-
-  const titles = data.title_candidates.map((value) => String(value).trim());
-  if (new Set(titles).size !== 10) {
-    throw new Error('title candidates must be unique');
-  }
-
-  const tags = [...new Set((data.tags || []).map((value) => String(value).trim()).filter(Boolean))];
-  if (tags.length < 10) {
-    throw new Error('metadata must contain at least 10 unique tags');
-  }
-
-  const descriptionKeyPoints = [
-  ...new Set(
-    (data.description_key_points || [])
-      .map((value) => String(value || '').replace(/\s+/g, ' ').trim())
-      .filter(Boolean),
-  ),
-].slice(0, 6);
-if (descriptionKeyPoints.length < 3) {
-  throw new Error('metadata must contain at least 3 description key points');
-}
-
-const descriptionClosing = String(data.description_closing || '').trim();
-if (!descriptionClosing) {
-  throw new Error('description_closing must not be empty');
-}
-
-const xBody = String(data.x_post_body || '').trim();
-  if (!xBody) throw new Error('x_post_body must not be empty');
-
-  const estimatedLength = xEstimatedLength(xBody);
-  if (estimatedLength > 140) {
+const getSavedYoutubeTags = (plan) => {
+  if (!Array.isArray(plan?.youtube_tags)) {
     throw new Error(
-      `X post exceeds 140 characters including reserved video URL: ${estimatedLength}`,
+      'video_plan.youtube_tags is required. Generate and save YouTube tags when narration_script.txt is created.',
     );
   }
 
-  return {
-    title_candidates: titles,
-    description_intro: String(data.description_intro || '').trim(),
-    description_key_points: descriptionKeyPoints,
-    description_closing: descriptionClosing,
-    tags,
-    x_post_body: xBody,
-    x_estimated_length_with_url: estimatedLength,
+  const tags = plan.youtube_tags.map(cleanTag);
+
+  if (tags.some((tag) => !tag)) {
+    throw new Error('video_plan.youtube_tags contains an empty tag.');
+  }
+  if (tags.some((tag) => tag.length > 60)) {
+    throw new Error('video_plan.youtube_tags contains a tag longer than 60 characters.');
+  }
+  if (new Set(tags).size !== tags.length) {
+    throw new Error('video_plan.youtube_tags contains duplicate tags.');
+  }
+  if (tags.length < 10 || tags.length > 30) {
+    throw new Error(
+      `video_plan.youtube_tags must contain 10-30 tags; got ${tags.length}.`,
+    );
+  }
+
+  const securityCode = normalizeSecurityCode(plan);
+  if (securityCode && !tags.includes(securityCode)) {
+    throw new Error(
+      `video_plan.youtube_tags must include security code ${securityCode}.`,
+    );
+  }
+
+  return tags;
+};
+
+const xEstimatedLength = (body) => {
+  const placeholder = '[動画URL]';
+  const text = `${String(body || '').trim()}\n${placeholder}`;
+  return Array.from(text.replace(placeholder, 'x'.repeat(23))).length;
+};
+
+const normalizeDescriptionPoint = (value) =>
+  String(value || '')
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/^[-・●○■□◆◇▶▷]+\s*/, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 110);
+
+const collectSectionLabels = (plan) => {
+  const slides = Array.isArray(plan?.slides) ? plan.slides : [];
+  const labels = [];
+  for (const slide of slides) {
+    const raw =
+      slide?.type === 'section_title'
+        ? slide?.section || slide?.display_title || slide?.headline
+        : slide?.section;
+    const label = normalizeDescriptionPoint(raw);
+    if (!label || /^(?:オープニング|エンディング|まとめ)$/.test(label)) continue;
+    if (!labels.includes(label)) labels.push(label);
+  }
+  return labels.slice(0, 6);
+};
+
+const extractDescriptionKeyPoints = (plan) => {
+  const slides = Array.isArray(plan?.slides) ? plan.slides : [];
+  const candidates = [];
+  const seen = new Set();
+
+  const add = (raw, index, weight = 0) => {
+    const point = normalizeDescriptionPoint(raw);
+    if (point.length < 6 || point.length > 110 || seen.has(point)) return;
+    if (/^(?:オープニング|エンディング|まとめ)$/.test(point)) return;
+    seen.add(point);
+
+    let score = weight;
+    if (/[0-9０-９]|[%％]|円|ドル|株|倍|兆|億|万/.test(point)) score += 5;
+    if (/株価|希薄化|PTS|業績|資金調達|自社株|増資|利益|売上|配当|需給|材料|リスク|決算|防衛|ドローン/i.test(point)) score += 3;
+    if (point.length >= 10 && point.length <= 80) score += 1;
+    candidates.push({point, index, score});
   };
+
+  slides.forEach((slide, index) => {
+    const slideText = Array.isArray(slide?.slide_text)
+      ? slide.slide_text
+      : slide?.slide_text
+        ? [slide.slide_text]
+        : [];
+    for (const value of slideText) add(value, index, 2);
+    if (slide?.type !== 'section_title') {
+      add(slide?.display_title || slide?.headline, index, 1);
+    }
+  });
+
+  candidates.sort((a, b) => b.score - a.score || a.index - b.index);
+  const points = candidates.map((item) => item.point).slice(0, 5);
+
+  const fallback = [
+    '発表内容と、その背景にある論点を整理',
+    '株価材料と残るリスクを分けて確認',
+    '今後確認したい条件や追加材料を整理',
+  ];
+  for (const point of fallback) {
+    if (points.length >= 3) break;
+    if (!points.includes(point)) points.push(point);
+  }
+  return points.slice(0, 5);
 };
 
 const buildDescriptionHashtags = ({tags, plan}) => {
@@ -414,7 +185,7 @@ const buildDescriptionHashtags = ({tags, plan}) => {
 
   const result = [];
   for (const raw of candidates) {
-    const normalized = normalizeTag(raw)
+    const normalized = cleanTag(raw)
       .replace(/\s+/g, '')
       .replace(/[^0-9A-Za-z\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}ー]/gu, '');
     if (!normalized || normalized.length > 40) continue;
@@ -431,7 +202,6 @@ const formatChapterTimestamp = (seconds) => {
   const hours = Math.floor(total / 3600);
   const minutes = Math.floor((total % 3600) / 60);
   const secs = total % 60;
-
   if (hours > 0) {
     return `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   }
@@ -470,12 +240,7 @@ export const buildVideoChapters = ({
   const totalSeconds = durationFrames / fps;
 
   const candidates = [
-    {
-      index: 0,
-      seconds: 0,
-      title: 'オープニング',
-      kind: 'opening',
-    },
+    {index: 0, seconds: 0, title: 'オープニング', kind: 'opening'},
   ];
 
   const sectionTitleIndexes = slides
@@ -522,16 +287,10 @@ export const buildVideoChapters = ({
       chapters.push({...candidate, seconds: 0});
       continue;
     }
-
     const previous = chapters[chapters.length - 1];
     if (candidate.seconds - previous.seconds < 10) continue;
     if (totalSeconds - candidate.seconds < 10) continue;
-
-    const duplicateTitle = chapters.some(
-      (chapter) => chapter.title === candidate.title,
-    );
-    if (duplicateTitle) continue;
-
+    if (chapters.some((chapter) => chapter.title === candidate.title)) continue;
     chapters.push(candidate);
   }
 
@@ -546,7 +305,6 @@ export const buildVideoChapters = ({
 
 const writePublishFiles = async ({outputDir, metadata}) => {
   if (!outputDir) return;
-
   await mkdir(outputDir, {recursive: true});
   await Promise.all([
     writeFile(
@@ -579,6 +337,112 @@ const writePublishFiles = async ({outputDir, metadata}) => {
   ]);
 };
 
+const buildBaseMetadata = (plan) => {
+  const slides = Array.isArray(plan?.slides) ? plan.slides : [];
+  const baseTitle = String(
+    plan?.video_title ||
+      plan?.title ||
+      slides[0]?.display_title ||
+      slides[0]?.headline ||
+      '動画解説',
+  ).trim();
+
+  const rawTitles = [
+    baseTitle,
+    baseTitle + '｜背景と注目点を整理',
+    baseTitle + '｜投資家が確認したいポイント',
+    baseTitle + '｜材料と今後の焦点',
+    baseTitle + '｜何が起きているのか',
+    baseTitle + '｜株価材料を整理',
+    baseTitle + '｜期待と実績を分けて確認',
+    baseTitle + '｜ニュースの要点を解説',
+    baseTitle + '｜今後どこを見るべきか',
+    baseTitle + '｜個人投資家向けに整理',
+  ];
+
+  const titleCandidates = [...new Set(rawTitles.map((value) => value.slice(0, 100)))];
+  while (titleCandidates.length < 10) {
+    titleCandidates.push(
+      (baseTitle + '｜解説' + (titleCandidates.length + 1)).slice(0, 100),
+    );
+  }
+
+  const securityCode = normalizeSecurityCode(plan);
+  const sectionLabels = collectSectionLabels(plan);
+  const descriptionKeyPoints = extractDescriptionKeyPoints(plan);
+  const subject = securityCode
+    ? `${baseTitle}（証券コード：${securityCode}）`
+    : baseTitle;
+  const sectionSummary = sectionLabels.length
+    ? `具体的には、${sectionLabels.slice(0, 5).join('、')}を軸に見ていきます。`
+    : '';
+
+  const descriptionIntro = [
+    `${subject}について解説します。`,
+    '今回の動画では、何が起きたのか、その背景と投資家が確認しておきたい論点を、動画内の事実関係に沿って順番に整理します。',
+    sectionSummary,
+    '短期的な値動きだけを見るのではなく、発表内容や具体的な数字、株価に影響しうる材料、まだ残っているリスクを分けて確認し、今後どこを見ればよいのかまで整理する内容です。',
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+
+  const descriptionClosing =
+    '今回の材料を一つだけで判断するのではなく、数字の変化、需給、事業や資本政策の進捗を分けて見ることが重要です。今後のIRや市場の反応を確認するときの整理材料としてご活用ください。';
+
+  const xBodyBase =
+    '【新着動画】' + baseTitle + 'を公開しました。背景と注目点を動画で整理しています。';
+  const xPostBody =
+    xEstimatedLength(xBodyBase) <= 140
+      ? xBodyBase
+      : '【新着動画】' + baseTitle.slice(0, 65) + 'を解説しました。';
+
+  return {
+    title_candidates: titleCandidates.slice(0, 10),
+    description_intro: descriptionIntro,
+    description_key_points: descriptionKeyPoints,
+    description_closing: descriptionClosing,
+    tags: getSavedYoutubeTags(plan),
+    x_post_body: xPostBody,
+    x_estimated_length_with_url: xEstimatedLength(xPostBody),
+    model: 'saved-video-plan-tags',
+  };
+};
+
+const finalizeDescription = ({metadata, plan, chapters = []}) => {
+  const chapterText = chapters
+    .map((chapter) => `${chapter.timestamp} ${chapter.title}`)
+    .join('\n');
+  const keyPointText = (metadata.description_key_points || [])
+    .map((point) => `・${point}`)
+    .join('\n');
+  const descriptionHashtags = buildDescriptionHashtags({
+    tags: metadata.tags,
+    plan,
+  }).join(' ');
+
+  const parts = [BLOG_ARTICLE_BLOCK, '', metadata.description_intro];
+  if (keyPointText) parts.push('', '【今回のポイント】', keyPointText);
+  if (chapters.length >= 3) parts.push('', '【目次】', chapterText);
+  if (metadata.description_closing) parts.push('', metadata.description_closing);
+  if (descriptionHashtags) parts.push('', descriptionHashtags);
+  parts.push('', CHANNEL_BOILERPLATE);
+  return parts.join('\n');
+};
+
+export const generatePublishMetadata = async ({plan, outputDir}) => {
+  const metadata = buildBaseMetadata(plan);
+  const finalized = {
+    ...metadata,
+    chapters: [],
+    chapters_enabled: false,
+    description: finalizeDescription({metadata, plan, chapters: []}),
+    x_post: metadata.x_post_body + '\n[動画URL]',
+    channel_boilerplate: CHANNEL_BOILERPLATE,
+  };
+  await writePublishFiles({outputDir, metadata: finalized});
+  return finalized;
+};
+
 export const applyChaptersToPublishMetadata = async ({
   metadata,
   plan,
@@ -594,311 +458,22 @@ export const applyChaptersToPublishMetadata = async ({
     totalFrames,
   });
 
-  const chapterText = chapters
-    .map((chapter) => `${chapter.timestamp} ${chapter.title}`)
-    .join('\n');
-
-  const keyPointText = (metadata.description_key_points || [])
-    .map((point) => `・${point}`)
-    .join('\n');
-
-  const descriptionHashtags = buildDescriptionHashtags({
-    tags: metadata.tags,
-    plan,
-  }).join(' ');
-
-  const descriptionParts = [BLOG_ARTICLE_BLOCK, '', metadata.description_intro];
-
-  if (keyPointText) {
-    descriptionParts.push('', '【今回のポイント】', keyPointText);
-  }
-
-  if (chapters.length >= 3) {
-    descriptionParts.push('', '【目次】', chapterText);
-  }
-
-  if (metadata.description_closing) {
-    descriptionParts.push('', metadata.description_closing);
-  }
-
-  if (descriptionHashtags) {
-    descriptionParts.push('', descriptionHashtags);
-  }
-
-  descriptionParts.push('', CHANNEL_BOILERPLATE);
-
+  const savedTags = getSavedYoutubeTags(plan);
   const finalized = {
     ...metadata,
+    tags: savedTags,
     chapters,
     chapters_enabled: chapters.length >= 3,
-    description: descriptionParts.join('\n'),
+    description: finalizeDescription({
+      metadata: {...metadata, tags: savedTags},
+      plan,
+      chapters,
+    }),
+    model: 'saved-video-plan-tags',
   };
 
   await writePublishFiles({outputDir, metadata: finalized});
   return finalized;
-};
-
-
-const normalizeDescriptionPoint = (value) =>
-  String(value || '')
-    .replace(/[\\r\\n]+/g, ' ')
-    .replace(/^[-・●○■□◆◇▶▷]+\\s*/, '')
-    .replace(/\\s+/g, ' ')
-    .trim()
-    .slice(0, 110);
-
-const collectSectionLabels = (plan) => {
-  const slides = Array.isArray(plan?.slides) ? plan.slides : [];
-  const labels = [];
-  for (const slide of slides) {
-    const raw =
-      slide?.type === 'section_title'
-        ? slide?.section || slide?.display_title || slide?.headline
-        : slide?.section;
-    const label = normalizeDescriptionPoint(raw);
-    if (!label || /^(?:オープニング|エンディング|まとめ)$/.test(label)) continue;
-    if (!labels.includes(label)) labels.push(label);
-  }
-  return labels.slice(0, 6);
-};
-
-const extractDescriptionKeyPoints = (plan) => {
-  const slides = Array.isArray(plan?.slides) ? plan.slides : [];
-  const candidates = [];
-  const seen = new Set();
-
-  const add = (raw, index, weight = 0) => {
-    const point = normalizeDescriptionPoint(raw);
-    if (point.length < 6 || point.length > 110 || seen.has(point)) return;
-    if (/^(?:オープニング|エンディング|まとめ)$/.test(point)) return;
-    seen.add(point);
-
-    let score = weight;
-    if (/[0-9０-９]|[%％]|円|ドル|株|倍|兆|億|万/.test(point)) score += 5;
-    if (/株価|希薄化|PTS|業績|資金調達|自社株|ビットコイン|mNAV|ワラント|SO|増資|利益|売上|配当|需給|材料|リスク/i.test(point)) score += 3;
-    if (point.length >= 10 && point.length <= 80) score += 1;
-    candidates.push({point, index, score});
-  };
-
-  slides.forEach((slide, index) => {
-    const slideText = Array.isArray(slide?.slide_text)
-      ? slide.slide_text
-      : slide?.slide_text
-        ? [slide.slide_text]
-        : [];
-    for (const value of slideText) add(value, index, 2);
-    if (slide?.type !== 'section_title') {
-      add(slide?.display_title || slide?.headline, index, 1);
-    }
-  });
-
-  candidates.sort((a, b) => b.score - a.score || a.index - b.index);
-  const points = candidates.map((item) => item.point).slice(0, 5);
-
-  for (const section of collectSectionLabels(plan)) {
-    if (points.length >= 3) break;
-    const point = `「${section}」を動画内の事実関係に沿って整理`;
-    if (!points.includes(point)) points.push(point);
-  }
-
-  const fallback = [
-    '発表内容と、その背景にある論点を整理',
-    '株価材料と残るリスクを分けて確認',
-    '今後確認したい条件や追加材料を整理',
-  ];
-  for (const point of fallback) {
-    if (points.length >= 3) break;
-    if (!points.includes(point)) points.push(point);
-  }
-
-  return points.slice(0, 5);
-};
-
-const buildDeterministicMetadata = (plan) => {
-  const slides = Array.isArray(plan?.slides) ? plan.slides : [];
-  const baseTitle = String(
-    plan?.video_title ||
-      plan?.title ||
-      slides[0]?.display_title ||
-      slides[0]?.headline ||
-      '動画解説',
-  ).trim();
-  const topic = String(plan?.topic || '').trim();
-
-  const rawTitles = [
-    baseTitle,
-    baseTitle + '｜背景と注目点を整理',
-    baseTitle + '｜投資家が確認したいポイント',
-    baseTitle + '｜材料と今後の焦点',
-    baseTitle + '｜何が起きているのか',
-    baseTitle + '｜株価材料を整理',
-    baseTitle + '｜期待と実績を分けて確認',
-    baseTitle + '｜ニュースの要点を解説',
-    baseTitle + '｜今後どこを見るべきか',
-    baseTitle + '｜個人投資家向けに整理',
-  ];
-  const titleCandidates = [...new Set(rawTitles.map((v) => v.slice(0, 100)))];
-  while (titleCandidates.length < 10) {
-    titleCandidates.push(
-      (baseTitle + '｜解説' + (titleCandidates.length + 1)).slice(0, 100),
-    );
-  }
-
-  const tags = buildFinalTags({tags: [], plan});
-  if (tags.length < 10) {
-    throw new Error('Unable to build at least 10 meaningful YouTube tags from the plan.');
-  }
-
-  const securityCode = normalizeSecurityCode(plan);
-  const sectionLabels = collectSectionLabels(plan);
-  const descriptionKeyPoints = extractDescriptionKeyPoints(plan);
-  const subject = securityCode
-    ? `${baseTitle}（証券コード：${securityCode}）`
-    : baseTitle;
-  const sectionSummary = sectionLabels.length
-    ? `具体的には、${sectionLabels.slice(0, 5).join('、')}を軸に見ていきます。`
-    : '';
-
-  const descriptionIntro = [
-    `${subject}について解説します。`,
-    topic
-      ? `今回の動画では、${topic}を中心に、動画内で扱っている事実関係と背景を順番に整理します。`
-      : '今回の動画では、何が起きたのか、その背景と投資家が確認しておきたい論点を、動画内の事実関係に沿って順番に整理します。',
-    sectionSummary,
-    '短期的な値動きだけを見るのではなく、発表内容や具体的な数字、株価に影響しうる材料、まだ残っているリスクを分けて確認し、今後どこを見ればよいのかまで整理する内容です。',
-  ]
-    .filter(Boolean)
-    .join('\n\n');
-
-  const descriptionClosing =
-    '今回の材料を一つだけで判断するのではなく、数字の変化、需給、事業や資本政策の進捗を分けて見ることが重要です。今後のIRや市場の反応を確認するときの整理材料としてご活用ください。';
-
-  const xBodyBase =
-    '【新着動画】' + baseTitle + 'を公開しました。背景と注目点を動画で整理しています。';
-  const xBody =
-    xEstimatedLength(xBodyBase) <= 140
-      ? xBodyBase
-      : '【新着動画】' + baseTitle.slice(0, 65) + 'を解説しました。';
-
-  return validate({
-    title_candidates: titleCandidates.slice(0, 10),
-    description_intro: descriptionIntro,
-    description_key_points: descriptionKeyPoints,
-    description_closing: descriptionClosing,
-    tags: tags.slice(0, 30),
-    x_post_body: xBody,
-  });
-};
-
-export const generatePublishMetadata = async ({plan, outputDir}) => {
-  const source = compactSource(plan);
-  if (!source.trim()) {
-    throw new Error('video plan does not contain enough content for publish metadata');
-  }
-
-  assertPublishMetadataReady(plan);
-
-  let generated;
-  let model = 'deterministic-plan-derived';
-
-  if (
-    process.env.OPENAI_METADATA_ENABLED === '1' &&
-    process.env.OPENAI_API_KEY
-  ) {
-    try {
-      const client = new OpenAI({apiKey: process.env.OPENAI_API_KEY});
-      model =
-        process.env.OPENAI_METADATA_MODEL ||
-        process.env.OPENAI_MODEL ||
-        'gpt-5.6-sol';
-
-      const response = await client.responses.create({
-        model,
-        reasoning: {effort: 'low'},
-        instructions: [
-          'You create publication metadata for the Japanese YouTube channel 賢明なる投資家チャンネル.',
-          'Base every factual claim only on the supplied video plan/narration.',
-          'Do not invent prices, dates, earnings figures, company claims, or conclusions.',
-          'Generate exactly 10 distinct Japanese YouTube title candidates.',
-          'Titles should be useful to individual investors, clear, compelling, and not misleading clickbait.',
-          'Mix styles: news-focused, investor-question, risk-focused, and analytical titles.',
-          'description_intro is the video-specific opening section. Write about 350-700 Japanese characters in 2-4 readable paragraphs.',
-          'Open with what happened or what the video is examining, then explain why it matters to investors and what viewpoints the video will cover.',
-          'description_key_points must contain 3-6 concise Japanese bullet-point texts. Prioritize concrete figures, changed conditions, named catalysts, risks, and comparison points that actually appear in the supplied source.',
-          'Do not invent a number or claim just to make a bullet point. If the source has important numerical changes, include them preferentially.',
-          'description_closing should be about 100-250 Japanese characters and state what to watch next or how to interpret the issue, without giving a buy/sell recommendation.',
-          'Do not include the chapter list or the standard channel boilerplate in these description fields; the system appends them.',
-          'tags must be 10-30 YouTube tags as plain terms without #.',
-          'Prioritize video-specific tags: company/security name, ticker/security code, products, industry, catalysts, market terms, and named technologies that actually appear in the supplied source.',
-          'Avoid generic-only tag sets. Do not create numbered filler tags such as 投資解説10, 動画解説11, or タグ12.',
-          'Always include 賢明なる投資家チャンネル as a tag.',
-          'If the supplied plan has a Japanese listed-equity security_code, include that 4-character code as a tag. Codes may be four digits or three digits plus one letter, such as 285A.',
-          'x_post_body is a concise Japanese announcement for X. Do not include a URL; the system appends [動画URL].',
-          'Keep x_post_body short enough that adding a URL still fits within 140 characters.',
-          'Do not use investment-recommendation language such as 絶対買い or 必ず上がる.',
-        ].join(' '),
-        input: source,
-        text: {
-          format: {
-            type: 'json_schema',
-            name: 'youtube_publish_metadata',
-            strict: true,
-            schema,
-          },
-        },
-      });
-      generated = validate(JSON.parse(response.output_text));
-    } catch (error) {
-      console.warn(
-        'OpenAI publish metadata generation unavailable; using deterministic plan-derived metadata:',
-        String(error),
-      );
-      generated = buildDeterministicMetadata(plan);
-      model = 'deterministic-plan-derived';
-    }
-  } else {
-    generated = buildDeterministicMetadata(plan);
-  }
-
-  generated.tags = buildFinalTags({
-    tags: generated.tags,
-    plan,
-  });
-  if (generated.tags.length < 10) {
-    throw new Error('Final YouTube tags contain fewer than 10 meaningful unique tags.');
-  }
-
-  const keyPointText = (generated.description_key_points || [])
-    .map((point) => `・${point}`)
-    .join('\n');
-  const descriptionHashtags = buildDescriptionHashtags({
-    tags: generated.tags,
-    plan,
-  }).join(' ');
-  const description = [
-    BLOG_ARTICLE_BLOCK,
-    '',
-    generated.description_intro,
-    keyPointText ? `\n【今回のポイント】\n${keyPointText}` : '',
-    generated.description_closing ? `\n${generated.description_closing}` : '',
-    descriptionHashtags ? `\n${descriptionHashtags}` : '',
-     '',
-    CHANNEL_BOILERPLATE,
-  ]
-    .filter((part) => part !== '')
-    .join('\n');
-  const xPost = generated.x_post_body + '\n[動画URL]';
-
-  const metadata = {
-    ...generated,
-    description,
-    x_post: xPost,
-    channel_boilerplate: CHANNEL_BOILERPLATE,
-    model,
-  };
-
-  await writePublishFiles({outputDir, metadata});
-  return metadata;
 };
 
 export {BLOG_ARTICLE_BLOCK, CHANNEL_BOILERPLATE};
