@@ -343,7 +343,7 @@ jobs:
           done < <(find segments -maxdepth 1 -name 'segment-*.mp4' | sort)
           ffmpeg -y -f concat -safe 0 -i concat.txt -c copy narration-video.mp4
 
-      - name: Mix BGM and normalize loudness
+      - name: Mix narration and BGM losslessly
         shell: bash
         run: |
           set -euo pipefail
@@ -355,7 +355,42 @@ jobs:
           ffmpeg -y \
             -i narration-video.mp4 \
             -stream_loop -1 -i "$BGM" \
-            -filter_complex "[1:a]volume=0.025,afade=t=in:st=0:d=1,afade=t=out:st=${FADE_OUT_START}:d=1.5[bgm];[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=0[mix];[mix]loudnorm=I=-15:LRA=7:TP=-1.5[a]" \
+            -filter_complex "[1:a]volume=0.025,afade=t=in:st=0:d=1,afade=t=out:st=${FADE_OUT_START}:d=1.5[bgm];[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=0[mix]" \
+            -map "[mix]" -ar 48000 -ac 2 -c:a flac -shortest mixed.flac
+
+      - name: Two-pass loudness normalization with true-peak headroom
+        shell: bash
+        run: |
+          set -euo pipefail
+          ffmpeg -hide_banner -i mixed.flac \
+            -af loudnorm=I=-15:LRA=7:TP=-2.5:print_format=json \
+            -f null - 2> firstpass.txt || true
+
+          python - <<'PY'
+          import json,re
+          text=open("firstpass.txt",encoding="utf-8",errors="ignore").read()
+          matches=re.findall(r'\{\s*"input_i".*?\}',text,re.S)
+          if not matches:
+              raise SystemExit("Could not parse first-pass loudness measurement")
+          d=json.loads(matches[-1])
+          filt=(
+              "loudnorm=I=-15:LRA=7:TP=-2.5:"
+              f"measured_I={d['input_i']}:"
+              f"measured_LRA={d['input_lra']}:"
+              f"measured_TP={d['input_tp']}:"
+              f"measured_thresh={d['input_thresh']}:"
+              f"offset={d['target_offset']}:"
+              "linear=true:print_format=summary"
+          )
+          open("secondpass-filter.txt","w",encoding="utf-8").write(filt)
+          print(filt)
+          PY
+
+          FILTER=$(cat secondpass-filter.txt)
+          ffmpeg -y \
+            -i narration-video.mp4 \
+            -i mixed.flac \
+            -filter_complex "[1:a]${FILTER}[a]" \
             -map 0:v:0 -map "[a]" \
             -c:v copy -c:a aac -b:a 128k -ar 48000 -ac 2 -shortest \
             -movflags +faststart \
