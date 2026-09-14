@@ -39,7 +39,7 @@ jobs:
           pose_line = "  pose?: 'normal' | 'point_up' | 'caution' | 'positive' | 'explain';\n"
           if pose_line not in text:
               needle = "  emotion: 'normal' | 'surprise' | 'serious' | 'smile';\n"
-              assert needle in text, 'scenes.ts emotion field not found'
+              assert needle in text
               text = text.replace(needle, needle + pose_line, 1)
               write(p, text)
 
@@ -48,7 +48,7 @@ jobs:
           import_line = "import {LayeredAvatar} from './LayeredAvatar';\n"
           if import_line not in text:
               needle = "} from './scenes';\n"
-              assert needle in text, 'Video.tsx scenes import not found'
+              assert needle in text
               text = text.replace(needle, needle + import_line, 1)
 
           old = "          <Avatar emotion={scene.emotion} mouthCues={scene.mouthCues} />"
@@ -56,7 +56,7 @@ jobs:
           if old in text:
               text = text.replace(old, new, 1)
           elif "<LayeredAvatar" not in text:
-              raise AssertionError('Video.tsx production Avatar call not found')
+              raise AssertionError('production Avatar call not found')
           write(p, text)
 
           p = Path('remotion-video/project.mjs')
@@ -64,14 +64,12 @@ jobs:
           valid_pose_decl = "const validPoses = new Set(['normal', 'point_up', 'caution', 'positive', 'explain']);\n"
           if valid_pose_decl not in text:
               needle = "const validEmotions = new Set(['normal', 'surprise', 'serious', 'smile']);\n"
-              assert needle in text, 'project.mjs validEmotions not found'
+              assert needle in text
               text = text.replace(needle, needle + valid_pose_decl, 1)
-
           emotion_line = "      emotion: validEmotions.has(slide.emotion) ? slide.emotion : 'normal',\n"
           pose_map_line = "      pose: validPoses.has(slide.pose) ? slide.pose : 'normal',\n"
           if pose_map_line not in text:
-              count = text.count(emotion_line)
-              assert count >= 1, 'project.mjs scene emotion mappings not found'
+              assert text.count(emotion_line) >= 1
               text = text.replace(emotion_line, emotion_line + pose_map_line)
           write(p, text)
 
@@ -80,38 +78,15 @@ jobs:
           pose_validation = """    if (\n      scene.pose !== undefined &&\n      !['normal', 'point_up', 'caution', 'positive', 'explain'].includes(scene.pose)\n    ) {\n      throw new Error(`Invalid scene pose at index ${index}`);\n    }\n\n"""
           if pose_validation not in text:
               needle = """    if (\n      scene.narration !== undefined &&\n      typeof scene.narration !== 'string'\n    ) {\n      throw new Error(`Invalid narration at scene ${index}`);\n    }\n"""
-              assert needle in text, 'server.mjs narration validation block not found'
+              assert needle in text
               text = text.replace(needle, needle + "\n" + pose_validation, 1)
 
           character_pack = """  const characterSourceDir = path.join(cwd, 'public', 'characters');\n  const characterTargetDir = path.join(stageDir, 'public', 'characters');\n  await stat(characterSourceDir);\n  await cp(characterSourceDir, characterTargetDir, {recursive: true});\n\n"""
           if character_pack not in text:
               needle = "  await mkdir(path.join(stageDir, 'public', 'generated'), {recursive: true});\n\n"
-              assert needle in text, 'server.mjs render package stage mkdir not found'
+              assert needle in text
               text = text.replace(needle, needle + character_pack, 1)
           write(p, text)
-
-          p = Path('.github/workflows/video-pipeline-youtube-direct.yml')
-          text = read(p)
-          env_line = "      CHARACTERS_DRIVE_FOLDER_ID: '1ucqNuaEwnAumEXYnzb3PRP2-fVzJpE6g'\n"
-          if env_line not in text:
-              needle = "      ALLOW_SUBTITLE_FALLBACK: \"1\"\n"
-              assert needle in text, 'pipeline fallback env not found'
-              text = text.replace(needle, needle + env_line, 1)
-
-          step = """      - name: Download 24 character parts from Drive\n        working-directory: remotion-video\n        run: node prepare-character-assets.mjs\n\n"""
-          if step not in text:
-              needle = "      - name: Build synchronized render package directly from Google Drive\n"
-              assert needle in text, 'pipeline package build step not found'
-              text = text.replace(needle, step + needle, 1)
-
-          verify_line = "          grep -Fxq './public/characters/mouth_smile_half.png' out/render-package-list.txt\n"
-          if verify_line not in text:
-              needle = "          grep -q '^./public/generated/' out/render-package-list.txt\n"
-              assert needle in text, 'pipeline package verification line not found'
-              text = text.replace(needle, needle + verify_line, 1)
-          write(p, text)
-
-          Path('.github/workflows/apply-layered-avatar-production.yml').unlink()
           PY
 
       - name: Verify patch markers
@@ -122,8 +97,6 @@ jobs:
           grep -Fq "mouth_smile_half.png" remotion-video/src/LayeredAvatar.tsx
           grep -Fq "pose: validPoses.has(slide.pose)" remotion-video/project.mjs
           grep -Fq "characterSourceDir" remotion-video/server.mjs
-          grep -Fq "Download 24 character parts from Drive" .github/workflows/video-pipeline-youtube-direct.yml
-          grep -Fq "./public/characters/mouth_smile_half.png" .github/workflows/video-pipeline-youtube-direct.yml
 
       - name: Remotion bundle check
         working-directory: remotion-video
@@ -131,13 +104,13 @@ jobs:
           npm install --ignore-scripts --prefer-offline
           npx remotion compositions src/index.tsx
 
-      - name: Commit production integration
+      - name: Commit production code integration
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add remotion-video/src/scenes.ts remotion-video/src/Video.tsx remotion-video/project.mjs remotion-video/server.mjs .github/workflows/video-pipeline-youtube-direct.yml .github/workflows/apply-layered-avatar-production.yml
+          git add remotion-video/src/scenes.ts remotion-video/src/Video.tsx remotion-video/project.mjs remotion-video/server.mjs
           git diff --cached --check
           git commit -m 'Use layered avatar in production videos'
           git push origin HEAD:remotion-prototype
