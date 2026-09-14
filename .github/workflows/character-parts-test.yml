@@ -1,0 +1,149 @@
+name: Character Parts Test
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - remotion-prototype
+    paths:
+      - 'remotion-video/src/LayeredAvatar.tsx'
+      - 'remotion-video/src/CharacterPartsTest.tsx'
+      - 'remotion-video/src/Root.tsx'
+      - 'remotion-video/prepare-character-assets.mjs'
+      - '.github/workflows/character-parts-test.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  render-character-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CHARACTERS_DRIVE_FOLDER_ID: '1ucqNuaEwnAumEXYnzb3PRP2-fVzJpE6g'
+      GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+      GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+      GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+      GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+      NODE_OPTIONS: --max-old-space-size=4096
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: remotion-prototype
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        working-directory: remotion-video
+        run: npm install --ignore-scripts --prefer-offline
+
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+
+      - name: Verify Google Drive authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${GOOGLE_SERVICE_ACCOUNT_JSON:-}" ]; then
+            echo "Google Drive auth: service account"
+          elif [ -n "${GOOGLE_CLIENT_ID:-}" ] && [ -n "${GOOGLE_CLIENT_SECRET:-}" ] && [ -n "${GOOGLE_REFRESH_TOKEN:-}" ]; then
+            echo "Google Drive auth: OAuth refresh token"
+          else
+            echo "Google Drive authentication is not configured." >&2
+            exit 1
+          fi
+
+      - name: Download 23 character parts from Drive
+        working-directory: remotion-video
+        run: node prepare-character-assets.mjs
+
+      - name: Validate PNG canvases and alpha
+        working-directory: remotion-video
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          : > out/character-assets-info.tsv
+          for f in public/characters/*.png; do
+            info=$(ffprobe -v error -select_streams v:0 \
+              -show_entries stream=width,height,pix_fmt \
+              -of csv=p=0 "$f")
+            printf '%s\t%s\n' "$(basename "$f")" "$info" | tee -a out/character-assets-info.tsv
+          done
+
+          python - <<'PY'
+          from pathlib import Path
+          rows=[]
+          for line in Path('out/character-assets-info.tsv').read_text().splitlines():
+              name, info = line.split('\t', 1)
+              width, height, pix_fmt = [x.strip() for x in info.split(',')]
+              rows.append((name, int(width), int(height), pix_fmt))
+          if len(rows) != 23:
+              raise SystemExit(f'Expected 23 PNG assets, got {len(rows)}')
+          dims={(w,h) for _,w,h,_ in rows}
+          if len(dims) != 1:
+              raise SystemExit(f'Character canvas mismatch: {sorted(dims)}')
+          no_alpha=[(name,pix) for name,_,_,pix in rows if 'a' not in pix]
+          if no_alpha:
+              raise SystemExit(f'PNG assets without alpha-capable pixel format: {no_alpha}')
+          print(f'Validated 23 assets: canvas={next(iter(dims))}, alpha-capable PNGs=23')
+          PY
+
+      - name: Render Remotion character test
+        working-directory: remotion-video
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          npx remotion render src/index.tsx CharacterPartsTest out/character-parts-test-raw.mp4 \
+            --codec=h264 \
+            --concurrency=2
+
+      - name: Encode final test video
+        working-directory: remotion-video
+        shell: bash
+        run: |
+          set -euo pipefail
+          ffmpeg -y -i out/character-parts-test-raw.mp4 \
+            -c:v libx264 -preset medium -crf 19 -pix_fmt yuv420p \
+            -movflags +faststart \
+            out/character-parts-test.mp4
+
+      - name: Build QA contact sheet
+        working-directory: remotion-video
+        shell: bash
+        run: |
+          set -euo pipefail
+          ffmpeg -y -i out/character-parts-test.mp4 \
+            -vf "select='eq(mod(n,45),22)',scale=360:-1,tile=5x4:padding=6:margin=8" \
+            -frames:v 1 \
+            out/character-parts-contact-sheet.png
+
+      - name: Media QA
+        working-directory: remotion-video
+        shell: bash
+        run: |
+          set -euo pipefail
+          ffprobe -v error -show_entries \
+            stream=codec_name,width,height,r_frame_rate,pix_fmt:format=duration,size \
+            -of json out/character-parts-test.mp4 | tee out/media-info.json
+          ffmpeg -v error -i out/character-parts-test.mp4 -f null -
+
+      - name: Upload test artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: character-parts-test
+          path: |
+            remotion-video/out/character-parts-test.mp4
+            remotion-video/out/character-parts-contact-sheet.png
+            remotion-video/out/character-assets-info.tsv
+            remotion-video/out/media-info.json
+          retention-days: 7
+          compression-level: 0
