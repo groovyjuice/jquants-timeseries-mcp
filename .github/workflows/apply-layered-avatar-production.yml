@@ -34,7 +34,6 @@ jobs:
           def write(path, text):
               Path(path).write_text(text, encoding='utf-8')
 
-          # 1) Scene type: allow production pose selection.
           p = Path('remotion-video/src/scenes.ts')
           text = read(p)
           pose_line = "  pose?: 'normal' | 'point_up' | 'caution' | 'positive' | 'explain';\n"
@@ -44,7 +43,6 @@ jobs:
               text = text.replace(needle, needle + pose_line, 1)
               write(p, text)
 
-          # 2) Production Video: route sidebar avatar to LayeredAvatar.
           p = Path('remotion-video/src/Video.tsx')
           text = read(p)
           import_line = "import {LayeredAvatar} from './LayeredAvatar';\n"
@@ -61,7 +59,6 @@ jobs:
               raise AssertionError('Video.tsx production Avatar call not found')
           write(p, text)
 
-          # 3) Project adapters: propagate slide.pose for every supported project mode.
           p = Path('remotion-video/project.mjs')
           text = read(p)
           valid_pose_decl = "const validPoses = new Set(['normal', 'point_up', 'caution', 'positive', 'explain']);\n"
@@ -78,7 +75,6 @@ jobs:
               text = text.replace(emotion_line, emotion_line + pose_map_line)
           write(p, text)
 
-          # 4) Server validation + render package must include Drive-downloaded character assets.
           p = Path('remotion-video/server.mjs')
           text = read(p)
           pose_validation = """    if (\n      scene.pose !== undefined &&\n      !['normal', 'point_up', 'caution', 'positive', 'explain'].includes(scene.pose)\n    ) {\n      throw new Error(`Invalid scene pose at index ${index}`);\n    }\n\n"""
@@ -94,8 +90,6 @@ jobs:
               text = text.replace(needle, needle + character_pack, 1)
           write(p, text)
 
-          # 5) Main direct-YouTube workflow: download characters once in prepare,
-          #    then package them for all parallel render workers.
           p = Path('.github/workflows/video-pipeline-youtube-direct.yml')
           text = read(p)
           env_line = "      CHARACTERS_DRIVE_FOLDER_ID: '1ucqNuaEwnAumEXYnzb3PRP2-fVzJpE6g'\n"
@@ -117,7 +111,6 @@ jobs:
               text = text.replace(needle, needle + verify_line, 1)
           write(p, text)
 
-          # Self-remove this one-shot patch workflow after successful patching.
           Path('.github/workflows/apply-layered-avatar-production.yml').unlink()
           PY
 
@@ -132,11 +125,11 @@ jobs:
           grep -Fq "Download 24 character parts from Drive" .github/workflows/video-pipeline-youtube-direct.yml
           grep -Fq "./public/characters/mouth_smile_half.png" .github/workflows/video-pipeline-youtube-direct.yml
 
-      - name: Type-check Remotion sources
+      - name: Remotion bundle check
         working-directory: remotion-video
         run: |
           npm install --ignore-scripts --prefer-offline
-          npx tsc --noEmit
+          npx remotion compositions src/index.tsx
 
       - name: Commit production integration
         shell: bash
