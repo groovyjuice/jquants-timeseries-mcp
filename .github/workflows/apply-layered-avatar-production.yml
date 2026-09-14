@@ -100,8 +100,8 @@ jobs:
           text = read(p)
           env_line = "      CHARACTERS_DRIVE_FOLDER_ID: '1ucqNuaEwnAumEXYnzb3PRP2-fVzJpE6g'\n"
           if env_line not in text:
-              needle = "      GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}\n"
-              assert needle in text, 'pipeline Google refresh env not found'
+              needle = "      ALLOW_SUBTITLE_FALLBACK: \"1\"\n"
+              assert needle in text, 'pipeline fallback env not found'
               text = text.replace(needle, needle + env_line, 1)
 
           step = """      - name: Download 24 character parts from Drive\n        working-directory: remotion-video\n        run: node prepare-character-assets.mjs\n\n"""
