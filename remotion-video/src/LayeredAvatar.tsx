@@ -167,13 +167,20 @@ export const LayeredAvatar: React.FC<LayeredAvatarProps> = ({
         ? assets.mouth.half
         : assets.mouth.open;
 
+  // Production layout passes size=500. Scale only that production canvas to
+  // 90% around the bottom-center so the visible character is ~450px while
+  // keeping the vertical bottom position unchanged and the horizontal center
+  // aligned with the sidebar center. Other test/default sizes remain unchanged.
+  const visualScale = size === 500 ? 0.9 : 1;
+
   return (
     <div
       style={{
         position: 'relative',
         width: size,
         height: size,
-        transform: `translateY(${bob}px)`,
+        transform: `translateY(${bob}px) scale(${visualScale})`,
+        transformOrigin: 'bottom center',
         filter: showShadow
           ? 'drop-shadow(0 14px 20px rgba(52, 94, 138, 0.16))'
           : undefined,
