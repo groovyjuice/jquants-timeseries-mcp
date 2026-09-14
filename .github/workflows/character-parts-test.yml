@@ -60,7 +60,7 @@ jobs:
             exit 1
           fi
 
-      - name: Download 23 character parts from Drive
+      - name: Download 24 character parts from Drive
         working-directory: remotion-video
         run: node prepare-character-assets.mjs
 
@@ -112,15 +112,15 @@ jobs:
               name, info = line.split('\t', 1)
               width, height, pix_fmt = [x.strip() for x in info.split(',')]
               rows.append((name, int(width), int(height), pix_fmt))
-          if len(rows) != 23:
-              raise SystemExit(f'Expected 23 PNG assets, got {len(rows)}')
+          if len(rows) != 24:
+              raise SystemExit(f'Expected 24 PNG assets, got {len(rows)}')
           dims={(w,h) for _,w,h,_ in rows}
           if dims != {(1280,1448)}:
               raise SystemExit(f'Character canvas mismatch after normalization: {sorted(dims)}')
           no_alpha=[(name,pix) for name,_,_,pix in rows if 'a' not in pix]
           if no_alpha:
               raise SystemExit(f'PNG assets without alpha-capable pixel format: {no_alpha}')
-          print('Validated 23 assets: canvas=1280x1448, alpha-capable PNGs=23')
+          print('Validated 24 assets: canvas=1280x1448, alpha-capable PNGs=24')
           PY
 
       - name: Render Remotion character test
@@ -149,7 +149,7 @@ jobs:
         run: |
           set -euo pipefail
           ffmpeg -y -i out/character-parts-test.mp4 \
-            -vf "select='eq(mod(n,45),22)',scale=360:-1,tile=5x4:padding=6:margin=8" \
+            -vf "select='eq(mod(n,90),45)',scale=360:-1,tile=4x1:padding=6:margin=8" \
             -frames:v 1 \
             out/character-parts-contact-sheet.png
 
