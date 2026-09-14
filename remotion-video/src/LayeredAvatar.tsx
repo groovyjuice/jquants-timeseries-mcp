@@ -154,7 +154,7 @@ export const LayeredAvatar: React.FC<LayeredAvatarProps> = ({
   const showPupils = !isBlinking;
 
   const mouthSrc =
-    emotion === 'smile'
+    emotion === 'normal' || emotion === 'smile'
       ? mouthState === 0
         ? assets.mouth.smileClosed
         : assets.mouth.smileOpen
