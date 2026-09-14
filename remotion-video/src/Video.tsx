@@ -113,8 +113,12 @@ const subtitleAtFrame = (scene: Scene, frame: number) => {
 
 const CONTENT_HEIGHT = 900;
 const SUBTITLE_HEIGHT = 180;
-const SLIDE_WIDTH = 1440;
-const SIDEBAR_WIDTH = 480;
+const SLIDE_X = 24;
+const SLIDE_Y = 22;
+const SLIDE_WIDTH = 1520;
+const SLIDE_HEIGHT = 855;
+const SIDEBAR_WIDTH = 376;
+const AVATAR_SIZE = 500;
 
 const assetSrc = (src: string) => {
   if (/^(https?:|data:|blob:)/.test(src)) return src;
@@ -245,9 +249,9 @@ const ChannelBrand: React.FC<{logoSrc?: string}> = ({logoSrc}) => (
     style={{
       position: 'absolute',
       top: 60,
-      left: 30,
-      right: 30,
-      height: 260,
+      left: 20,
+      right: 20,
+      height: 250,
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -266,7 +270,7 @@ const ChannelBrand: React.FC<{logoSrc?: string}> = ({logoSrc}) => (
     ) : (
       <div
         style={{
-          fontSize: 46,
+          fontSize: 42,
           lineHeight: 1.35,
           fontWeight: 800,
           color: '#172033',
@@ -336,23 +340,22 @@ const SlideArea: React.FC<{scene: Scene}> = ({scene}) => {
     <div
       style={{
         position: 'absolute',
-        left: 0,
-        top: 0,
+        left: isSectionTitle ? 0 : SLIDE_X,
+        top: isSectionTitle ? 0 : SLIDE_Y,
         width: isSectionTitle ? 1920 : SLIDE_WIDTH,
-        height: isSectionTitle ? 1080 : CONTENT_HEIGHT,
+        height: isSectionTitle ? 1080 : SLIDE_HEIGHT,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: isSectionTitle ? 0 : '40px 40px 50px 40px',
+        padding: 0,
         boxSizing: 'border-box',
       }}
     >
       <div
         style={{
           width: '100%',
-          height: isSectionTitle ? '100%' : undefined,
+          height: '100%',
           aspectRatio: isSectionTitle ? undefined : '16 / 9',
-          maxHeight: isSectionTitle ? undefined : 810,
           position: 'relative',
           overflow: 'hidden',
           backgroundColor: '#ffffff',
@@ -567,23 +570,24 @@ const SceneCard: React.FC<{scene: Scene; logoSrc?: string}> = ({
             borderLeft: '1px solid rgba(214, 224, 235, 0.95)',
             boxSizing: 'border-box',
             backdropFilter: 'blur(3px)',
+            overflow: 'hidden',
           }}
         >
           <ChannelBrand logoSrc={logoSrc} />
           <div
             style={{
               position: 'absolute',
-              left: 10,
-              bottom: 18,
-              width: 460,
-              height: 460,
+              left: (SIDEBAR_WIDTH - AVATAR_SIZE) / 2,
+              bottom: 0,
+              width: AVATAR_SIZE,
+              height: AVATAR_SIZE,
             }}
           >
             <LayeredAvatar
               pose={scene.pose ?? 'normal'}
               emotion={scene.emotion}
               mouthCues={scene.mouthCues}
-              size={460}
+              size={AVATAR_SIZE}
               bobAmount={2.2}
               enableBlink
               showShadow
