@@ -2,6 +2,11 @@ import React from 'react';
 import {Composition} from 'remotion';
 import {TestVideo, type VideoProps} from './Video';
 import {scenes as defaultScenes} from './scenes';
+import {
+  CharacterPartsTest,
+  CHARACTER_TEST_DURATION,
+  CHARACTER_TEST_FPS,
+} from './CharacterPartsTest';
 
 export const Root: React.FC = () => {
   return (
@@ -29,6 +34,14 @@ export const Root: React.FC = () => {
         component={TestVideo}
         durationInFrames={30}
         fps={30}
+        width={1920}
+        height={1080}
+      />
+      <Composition
+        id="CharacterPartsTest"
+        component={CharacterPartsTest}
+        durationInFrames={CHARACTER_TEST_DURATION}
+        fps={CHARACTER_TEST_FPS}
         width={1920}
         height={1080}
       />
