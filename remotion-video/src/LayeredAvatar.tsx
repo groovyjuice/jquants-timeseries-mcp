@@ -55,6 +55,7 @@ const assets = {
     half: staticFile('characters/mouth_half.png'),
     open: staticFile('characters/mouth_open.png'),
     smileClosed: staticFile('characters/mouth_smile_closed.png'),
+    smileHalf: staticFile('characters/mouth_smile_half.png'),
     smileOpen: staticFile('characters/mouth_smile_open.png'),
   },
 };
@@ -153,16 +154,18 @@ export const LayeredAvatar: React.FC<LayeredAvatarProps> = ({
 
   const showPupils = !isBlinking;
 
-  const mouthSrc =
-    emotion === 'normal' || emotion === 'smile'
-      ? mouthState === 0
-        ? assets.mouth.smileClosed
+  const useSmileMouth = emotion === 'normal' || emotion === 'smile';
+  const mouthSrc = useSmileMouth
+    ? mouthState === 0
+      ? assets.mouth.smileClosed
+      : mouthState === 1
+        ? assets.mouth.smileHalf
         : assets.mouth.smileOpen
-      : mouthState === 0
-        ? assets.mouth.closed
-        : mouthState === 1
-          ? assets.mouth.half
-          : assets.mouth.open;
+    : mouthState === 0
+      ? assets.mouth.closed
+      : mouthState === 1
+        ? assets.mouth.half
+        : assets.mouth.open;
 
   return (
     <div
