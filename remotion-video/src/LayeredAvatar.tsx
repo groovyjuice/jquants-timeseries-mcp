@@ -73,6 +73,49 @@ const AvatarLayer: React.FC<{src: string}> = ({src}) => (
   />
 );
 
+// The smile eyes are narrower than the normal eye opening. Keep the pupil
+// coordinates unchanged, but clip each pupil to the visible sclera opening so
+// the iris never leaks through the eyelids.
+const SmilePupilsLayer: React.FC = () => (
+  <svg
+    viewBox="0 0 1280 1448"
+    preserveAspectRatio="xMidYMid meet"
+    style={{
+      position: 'absolute',
+      inset: 0,
+      width: '100%',
+      height: '100%',
+      pointerEvents: 'none',
+      overflow: 'visible',
+    }}
+  >
+    <defs>
+      <clipPath id="smile-pupil-left-mask">
+        <polygon points="674,321 687,321 711,326 714,327 714,331 713,336 707,341 704,342 697,344 662,353 641,353 637,352 636,350 636,347 640,342 642,340 648,335 653,331 658,328 666,324 671,322" />
+      </clipPath>
+      <clipPath id="smile-pupil-right-mask">
+        <polygon points="477,391 474,388 476,384 479,380 485,375 491,371 495,369 501,367 511,365 516,365 528,367 535,369 542,372 545,375 546,377 547,380 547,382 545,387 497,395 489,396 479,392" />
+      </clipPath>
+    </defs>
+    <image
+      href={assets.pupilLeft}
+      x="0"
+      y="0"
+      width="1280"
+      height="1448"
+      clipPath="url(#smile-pupil-left-mask)"
+    />
+    <image
+      href={assets.pupilRight}
+      x="0"
+      y="0"
+      width="1280"
+      height="1448"
+      clipPath="url(#smile-pupil-right-mask)"
+    />
+  </svg>
+);
+
 const fallbackMouthStateAtFrame = (frame: number): MouthState => {
   const phase = frame % 30;
   if (phase < 10) return 0;
@@ -108,7 +151,7 @@ export const LayeredAvatar: React.FC<LayeredAvatarProps> = ({
         ? assets.eyes.smile
         : assets.eyes.open;
 
-  const showPupils = !isBlinking && emotion !== 'smile';
+  const showPupils = !isBlinking;
 
   const mouthSrc =
     emotion === 'smile'
@@ -141,8 +184,13 @@ export const LayeredAvatar: React.FC<LayeredAvatarProps> = ({
       <AvatarLayer src={assets.headBase} />
       <AvatarLayer src={assets.eyebrow[emotion]} />
       <AvatarLayer src={eyesSrc} />
-      {showPupils ? <AvatarLayer src={assets.pupilLeft} /> : null}
-      {showPupils ? <AvatarLayer src={assets.pupilRight} /> : null}
+      {showPupils && emotion === 'smile' ? <SmilePupilsLayer /> : null}
+      {showPupils && emotion !== 'smile' ? (
+        <AvatarLayer src={assets.pupilLeft} />
+      ) : null}
+      {showPupils && emotion !== 'smile' ? (
+        <AvatarLayer src={assets.pupilRight} />
+      ) : null}
       <AvatarLayer src={mouthSrc} />
       <AvatarLayer src={assets.hairFront} />
     </div>
