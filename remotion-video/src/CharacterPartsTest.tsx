@@ -3,19 +3,10 @@ import {AbsoluteFill, useCurrentFrame} from 'remotion';
 import {
   LayeredAvatar,
   type CharacterExpression,
-  type CharacterPose,
 } from './LayeredAvatar';
 
 export const CHARACTER_TEST_FPS = 30;
-export const CHARACTER_TEST_SEGMENT_FRAMES = 45;
-
-const poses: CharacterPose[] = [
-  'normal',
-  'point_up',
-  'caution',
-  'positive',
-  'explain',
-];
+export const CHARACTER_TEST_SEGMENT_FRAMES = CHARACTER_TEST_FPS * 3;
 
 const expressions: CharacterExpression[] = [
   'normal',
@@ -23,14 +14,6 @@ const expressions: CharacterExpression[] = [
   'surprise',
   'smile',
 ];
-
-const poseLabels: Record<CharacterPose, string> = {
-  normal: 'NORMAL',
-  point_up: 'POINT UP',
-  caution: 'CAUTION',
-  positive: 'POSITIVE',
-  explain: 'EXPLAIN',
-};
 
 const expressionLabels: Record<CharacterExpression, string> = {
   normal: 'NORMAL',
@@ -40,25 +23,27 @@ const expressionLabels: Record<CharacterExpression, string> = {
 };
 
 export const CHARACTER_TEST_DURATION =
-  poses.length * expressions.length * CHARACTER_TEST_SEGMENT_FRAMES;
+  expressions.length * CHARACTER_TEST_SEGMENT_FRAMES;
 
 export const CharacterPartsTest: React.FC = () => {
   const frame = useCurrentFrame();
-  const comboIndex = Math.min(
-    poses.length * expressions.length - 1,
+  const expressionIndex = Math.min(
+    expressions.length - 1,
     Math.floor(frame / CHARACTER_TEST_SEGMENT_FRAMES),
   );
-  const poseIndex = Math.floor(comboIndex / expressions.length);
-  const expressionIndex = comboIndex % expressions.length;
-  const pose = poses[poseIndex];
   const emotion = expressions[expressionIndex];
   const localFrame = frame % CHARACTER_TEST_SEGMENT_FRAMES;
+  const mouthPhase = localFrame % 30;
   const mouthLabel =
-    localFrame % 30 < 10
-      ? 'closed'
-      : localFrame % 30 < 20
-        ? 'half / smile-open'
-        : 'open';
+    emotion === 'normal' || emotion === 'smile'
+      ? mouthPhase < 10
+        ? 'smile-closed'
+        : 'smile-open'
+      : mouthPhase < 10
+        ? 'closed'
+        : mouthPhase < 20
+          ? 'half'
+          : 'open';
 
   return (
     <AbsoluteFill
@@ -79,7 +64,7 @@ export const CharacterPartsTest: React.FC = () => {
           fontWeight: 800,
         }}
       >
-        Character Parts Test
+        Expression Test
       </div>
       <div
         style={{
@@ -91,7 +76,7 @@ export const CharacterPartsTest: React.FC = () => {
           color: '#607089',
         }}
       >
-        23-layer Remotion avatar / 5 poses × 4 expressions
+        body_normal fixed / 4 expressions × 3 seconds
       </div>
 
       <div
@@ -107,7 +92,7 @@ export const CharacterPartsTest: React.FC = () => {
         }}
       >
         <LayeredAvatar
-          pose={pose}
+          pose="normal"
           emotion={emotion}
           size={850}
           bobAmount={3}
@@ -134,7 +119,7 @@ export const CharacterPartsTest: React.FC = () => {
           POSE
         </div>
         <div style={{fontSize: 58, fontWeight: 800, marginTop: 4}}>
-          {poseLabels[pose]}
+          NORMAL FIXED
         </div>
 
         <div
@@ -165,9 +150,9 @@ export const CharacterPartsTest: React.FC = () => {
         >
           mouth: {mouthLabel}
           <br />
-          blink: 約4秒周期 / 5 frames
+          normal: smile mouth pair
           <br />
-          idle: ±3px vertical only
+          blink: 約4秒周期 / 5 frames
         </div>
       </div>
 
@@ -187,7 +172,7 @@ export const CharacterPartsTest: React.FC = () => {
           fontWeight: 600,
         }}
       >
-        hair_back → body → head_base → eyebrows → eyes → pupils → mouth → hair_front
+        normal → serious → surprise → smile / each 3 sec
       </div>
 
       <div
