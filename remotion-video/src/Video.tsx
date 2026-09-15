@@ -119,6 +119,9 @@ const SLIDE_WIDTH = 1520;
 const SLIDE_HEIGHT = 855;
 const SIDEBAR_WIDTH = 376;
 const AVATAR_SIZE = 500;
+const AVATAR_X_OFFSET = 2;
+const AVATAR_BOB_AMOUNT = 3;
+const CHANNEL_BRAND_FONT_SIZE = 40;
 
 const assetSrc = (src: string) => {
   if (/^(https?:|data:|blob:)/.test(src)) return src;
@@ -188,7 +191,7 @@ const Avatar: React.FC<{
 
   // Subtle idle motion: slow breathing represented only by a gentle vertical rise/fall.
   const breathingPhase = Math.sin(frame / 22);
-  const bob = breathingPhase * 2.2;
+  const bob = breathingPhase * AVATAR_BOB_AMOUNT;
 
   const isSmile = emotion === 'smile';
   const blinkPhase = frame % 120;
@@ -270,11 +273,13 @@ const ChannelBrand: React.FC<{logoSrc?: string}> = ({logoSrc}) => (
     ) : (
       <div
         style={{
-          fontSize: 42,
+          fontSize: CHANNEL_BRAND_FONT_SIZE,
           lineHeight: 1.35,
           fontWeight: 800,
           color: '#172033',
           letterSpacing: 1.5,
+          whiteSpace: 'nowrap',
+          wordBreak: 'keep-all',
         }}
       >
         賢明なる
@@ -577,7 +582,7 @@ const SceneCard: React.FC<{scene: Scene; logoSrc?: string}> = ({
           <div
             style={{
               position: 'absolute',
-              left: (SIDEBAR_WIDTH - AVATAR_SIZE) / 2,
+              left: (SIDEBAR_WIDTH - AVATAR_SIZE) / 2 + AVATAR_X_OFFSET,
               bottom: 0,
               width: AVATAR_SIZE,
               height: AVATAR_SIZE,
@@ -588,7 +593,7 @@ const SceneCard: React.FC<{scene: Scene; logoSrc?: string}> = ({
               emotion={scene.emotion}
               mouthCues={scene.mouthCues}
               size={AVATAR_SIZE}
-              bobAmount={2.2}
+              bobAmount={AVATAR_BOB_AMOUNT}
               enableBlink
               showShadow
             />
