@@ -1,8 +1,8 @@
 {
   "stock": "1570",
   "interval": "1m",
-  "from_date": "",
-  "to_date": "",
-  "filename_mode": "stable",
-  "requested_at": "2026-09-15T09:11:00+09:00"
+  "from_date": "2026-01-01",
+  "to_date": "2026-09-14",
+  "filename_mode": "dated",
+  "requested_at": "2026-09-15T09:20:00+09:00"
 }
