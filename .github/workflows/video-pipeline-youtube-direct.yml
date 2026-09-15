@@ -280,8 +280,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
+      GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
       GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
       GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+      GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+      BGM_DRIVE_FOLDER_ID: "1yrHJHP2JFz4Y7SXBbgITLrZskDrpSkyw"
+      BGM_VOLUME: "0.025"
       YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
       YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
       YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
@@ -308,6 +312,10 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq ffmpeg
 
+      - name: Download current BGM assets from Drive
+        working-directory: remotion-video
+        run: node prepare-bgm-assets.mjs
+
       - name: Download all compressed segments
         uses: actions/download-artifact@v4
         with:
@@ -321,12 +329,14 @@ jobs:
           name: pipeline-render-package
           path: package
 
-      - name: Extract publish metadata
+      - name: Extract publish metadata and final scene timeline
         run: |
           mkdir -p publish
           tar -xzf package/render-package.tar.gz -C publish ./publish
           mv publish/publish/* publish/
           rmdir publish/publish
+          tar -xzf package/render-package.tar.gz ./props.json
+          test -f props.json
 
       - name: Verify and concatenate segments
         shell: bash
@@ -343,19 +353,42 @@ jobs:
           done < <(find segments -maxdepth 1 -name 'segment-*.mp4' | sort)
           ffmpeg -y -f concat -safe 0 -i concat.txt -c copy narration-video.mp4
 
-      - name: Mix narration and BGM losslessly
+      - name: Mix narration with main and ending BGM losslessly
         shell: bash
         run: |
           set -euo pipefail
           DURATION=$(ffprobe -v error -show_entries format=duration -of csv=p=0 narration-video.mp4)
-          FADE_OUT_START=$(awk -v d="$DURATION" 'BEGIN {x=d-1.5; if(x<0)x=0; printf "%.3f", x}')
-          BGM="remotion-video/public/common/bgm/main_bgm.mp3"
-          test -f "$BGM"
+          ENDING_START=$(python - <<'PY'
+          import json
+          data=json.load(open("props.json",encoding="utf-8"))
+          scenes=data.get("scenes",[])
+          ending_indexes=[i for i,s in enumerate(scenes) if s.get("slideType")=="ending"]
+          if len(ending_indexes) != 1:
+              raise SystemExit(f"Expected exactly one ending scene, found {len(ending_indexes)}")
+          idx=ending_indexes[0]
+          if idx != len(scenes)-1:
+              raise SystemExit("Ending scene must be the final scene")
+          frames=sum(max(1,int(float(s.get("duration",1) or 1))) for s in scenes[:idx])
+          print(f"{frames/30:.6f}")
+          PY
+          )
+          ENDING_DURATION=$(awk -v d="$DURATION" -v s="$ENDING_START" 'BEGIN {x=d-s; if(x<=0) exit 1; printf "%.6f", x}')
+          ENDING_START_MS=$(awk -v s="$ENDING_START" 'BEGIN {printf "%d", (s*1000)+0.5}')
+          ENDING_FADE_OUT_START=$(awk -v d="$ENDING_DURATION" 'BEGIN {x=d-1.5; if(x<0)x=0; printf "%.3f", x}')
+
+          MAIN_BGM="remotion-video/public/common/bgm/main_bgm.mp3"
+          ENDING_BGM="remotion-video/public/common/bgm/ending_bgm.mp3"
+          test -f "$MAIN_BGM"
+          test -f "$ENDING_BGM"
+          test -n "${BGM_VOLUME:-}"
+
+          echo "duration=$DURATION ending_start=$ENDING_START ending_duration=$ENDING_DURATION bgm_volume=$BGM_VOLUME"
 
           ffmpeg -y \
             -i narration-video.mp4 \
-            -stream_loop -1 -i "$BGM" \
-            -filter_complex "[1:a]volume=0.025,afade=t=in:st=0:d=1,afade=t=out:st=${FADE_OUT_START}:d=1.5[bgm];[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=0[mix]" \
+            -stream_loop -1 -i "$MAIN_BGM" \
+            -stream_loop -1 -i "$ENDING_BGM" \
+            -filter_complex "[1:a]volume=${BGM_VOLUME},afade=t=in:st=0:d=1,atrim=duration=${ENDING_START},asetpts=PTS-STARTPTS[mainbgm];[2:a]volume=${BGM_VOLUME},atrim=duration=${ENDING_DURATION},afade=t=out:st=${ENDING_FADE_OUT_START}:d=1.5,asetpts=PTS-STARTPTS,adelay=${ENDING_START_MS}|${ENDING_START_MS}[endingbgm];[mainbgm][endingbgm]amix=inputs=2:duration=longest:dropout_transition=0[bgm];[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=0[mix]" \
             -map "[mix]" -ar 48000 -ac 2 -c:a flac -shortest mixed.flac
 
       - name: Two-pass loudness normalization with true-peak headroom
