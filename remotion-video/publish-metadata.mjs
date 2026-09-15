@@ -115,15 +115,34 @@ const normalizeDescriptionPoint = (value) =>
 const collectSectionLabels = (plan) => {
   const slides = Array.isArray(plan?.slides) ? plan.slides : [];
   const labels = [];
-  for (const slide of slides) {
-    const raw =
-      slide?.type === 'section_title'
-        ? slide?.section || slide?.display_title || slide?.headline
-        : slide?.section;
-    const label = normalizeDescriptionPoint(raw);
-    if (!label || /^(?:オープニング|エンディング|まとめ)$/.test(label)) continue;
-    if (!labels.includes(label)) labels.push(label);
+  const sectionTitleSlides = slides.filter(
+    (slide) => slide?.type === 'section_title',
+  );
+
+  if (sectionTitleSlides.length) {
+    for (const slide of sectionTitleSlides) {
+      const raw = slide?.display_title || slide?.headline || slide?.section;
+      const label = normalizeDescriptionPoint(raw);
+      if (!label || /^(?:オープニング|エンディング|まとめ)$/.test(label)) {
+        continue;
+      }
+      if (!labels.includes(label)) labels.push(label);
+    }
+  } else {
+    let previousSection = '';
+    for (const slide of slides) {
+      const section = String(slide?.section || '').trim();
+      if (!section || section === previousSection) continue;
+      previousSection = section;
+      const raw = slide?.display_title || slide?.headline || section;
+      const label = normalizeDescriptionPoint(raw);
+      if (!label || /^(?:オープニング|エンディング|まとめ)$/.test(label)) {
+        continue;
+      }
+      if (!labels.includes(label)) labels.push(label);
+    }
   }
+
   return labels.slice(0, 6);
 };
 
@@ -254,7 +273,7 @@ export const buildVideoChapters = ({
         index,
         seconds: Number(timedScenes[index].from || 0) / fps,
         title: cleanChapterTitle(
-          slide.section || slide.display_title || slide.headline,
+          slide.display_title || slide.headline || slide.section,
         ),
         kind: 'section',
       });
@@ -273,7 +292,9 @@ export const buildVideoChapters = ({
       candidates.push({
         index,
         seconds: Number(timedScenes[index].from || 0) / fps,
-        title: cleanChapterTitle(section),
+        title: cleanChapterTitle(
+          slide.display_title || slide.headline || section,
+        ),
         kind: 'section',
       });
     }
