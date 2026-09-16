@@ -1,0 +1,26 @@
+name: Run Audiostock 621A 20260916
+
+on:
+  push:
+    branches:
+      - remotion-prototype
+    paths:
+      - '.github/workflows/dispatch-audiostock-621a-20260916.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  run-video-pipeline:
+    uses: ./.github/workflows/video-pipeline-youtube-direct.yml
+    with:
+      project_key: "2026-09-16_621A_オーディオストック"
+      video_plan_file_id: "1UMiAnyxiPIOdPa__SQ1q5pRjH5OsWt3l"
+      slides_folder_id: "1lVlTe6tAI9UbLBXfI1fV2VHtMlJrqbWP"
+      audio_folder_id: "1xdNRRL_lul8fKZdMYPKBo3ExxE7pzWiN"
+      audio_manifest_file_id: "1MbQ8NkQorqd8yG9vZkWAfwyCH-MQTEVB"
+      ending_slide_file_id: "1E_g376FHQOt0M7c6gAJAjpNOCnKVpj0k"
+      output_filename: "audiostock-621a-20260916.mp4"
+      segment_count: "12"
+    secrets: inherit
