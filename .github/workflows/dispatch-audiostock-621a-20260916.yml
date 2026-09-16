@@ -1,6 +1,6 @@
 name: Run Audiostock 621A 20260916
 
-# rerun after AAC true-peak safety update 2026-09-16
+# rerun after Drive slide updates 001-010 2026-09-16
 on:
   push:
     branches:
