@@ -391,12 +391,14 @@ jobs:
             -filter_complex "[1:a]volume=${BGM_VOLUME},afade=t=in:st=0:d=1,atrim=duration=${ENDING_START},asetpts=PTS-STARTPTS[mainbgm];[2:a]volume=${BGM_VOLUME},atrim=duration=${ENDING_DURATION},afade=t=out:st=${ENDING_FADE_OUT_START}:d=1.5,asetpts=PTS-STARTPTS,adelay=${ENDING_START_MS}|${ENDING_START_MS}[endingbgm];[mainbgm][endingbgm]amix=inputs=2:duration=longest:dropout_transition=0[bgm];[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=0[mix]" \
             -map "[mix]" -ar 48000 -ac 2 -c:a flac -shortest mixed.flac
 
-      - name: Two-pass loudness normalization with true-peak headroom
+      - name: Two-pass loudness normalization with AAC safety headroom
         shell: bash
         run: |
           set -euo pipefail
+          # AAC encoding can create inter-sample peak overshoot. Reserve 3 dB
+          # of codec headroom while keeping the final QA limit at -1.0 dBTP.
           ffmpeg -hide_banner -i mixed.flac \
-            -af loudnorm=I=-15:LRA=7:TP=-2.5:print_format=json \
+            -af loudnorm=I=-15:LRA=7:TP=-4.0:print_format=json \
             -f null - 2> firstpass.txt || true
 
           python - <<'PY'
@@ -407,7 +409,7 @@ jobs:
               raise SystemExit("Could not parse first-pass loudness measurement")
           d=json.loads(matches[-1])
           filt=(
-              "loudnorm=I=-15:LRA=7:TP=-2.5:"
+              "loudnorm=I=-15:LRA=7:TP=-4.0:"
               f"measured_I={d['input_i']}:"
               f"measured_LRA={d['input_lra']}:"
               f"measured_TP={d['input_tp']}:"
