@@ -19,8 +19,10 @@ jobs:
       video_plan_file_id: "1u9z9B-wuJY9D_PAFdGrpeJrjhNBS3hcy"
       slides_folder_id: "1X8tm_1-9cBh2RbCJ5_fveGZNMCKWW2Yo"
       audio_folder_id: "1g5Z4-HuT4uGPmCRA6qOQo40O1etCWE39"
-      audio_manifest_file_id: "1QRST20vCiyqZHPnBz9NO2RjvdOuZiM37"
+      audio_manifest_file_id: "1UVYbY0jTgaM8feEKd_SgJy_0TKH3VqcG"
       ending_slide_file_id: "1E_g376FHQOt0M7c6gAJAjpNOCnKVpj0k"
-      output_filename: "ntt-9432-20260917.mp4"
+      output_filename: "ntt-9432-20260917-v2.mp4"
       segment_count: "12"
     secrets: inherit
+
+# latest-materials rerender 2026-09-17
