@@ -1,0 +1,26 @@
+name: Run NTT 9432 20260917
+
+on:
+  push:
+    branches:
+      - remotion-prototype
+    paths:
+      - '.github/workflows/dispatch-ntt-9432-20260917.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  run-video-pipeline:
+    uses: ./.github/workflows/video-pipeline-youtube-direct.yml
+    with:
+      project_key: "2026-09-17_NTT_9432_180円突破_今後の注目点"
+      video_plan_file_id: "1u9z9B-wuJY9D_PAFdGrpeJrjhNBS3hcy"
+      slides_folder_id: "1X8tm_1-9cBh2RbCJ5_fveGZNMCKWW2Yo"
+      audio_folder_id: "1g5Z4-HuT4uGPmCRA6qOQo40O1etCWE39"
+      audio_manifest_file_id: "1QRST20vCiyqZHPnBz9NO2RjvdOuZiM37"
+      ending_slide_file_id: "1E_g376FHQOt0M7c6gAJAjpNOCnKVpj0k"
+      output_filename: "ntt-9432-20260917.mp4"
+      segment_count: "12"
+    secrets: inherit
