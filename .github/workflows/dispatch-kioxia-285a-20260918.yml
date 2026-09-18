@@ -1,0 +1,28 @@
+name: Run Kioxia 285A 20260918
+
+on:
+  push:
+    branches:
+      - remotion-prototype
+    paths:
+      - '.github/workflows/dispatch-kioxia-285a-20260918.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  run-video-pipeline:
+    uses: ./.github/workflows/video-pipeline-youtube-direct.yml
+    with:
+      project_key: "2026-09-18_キオクシア急騰_連休明けとNAND需給の注目点"
+      video_plan_file_id: "1eITFrVSzNrC5FrtEd0eeLpMy-3cuItOY"
+      slides_folder_id: "1sDVyzDNcFtnWNZYgAbStcHeylUbX52_m"
+      audio_folder_id: "1OrZQPYq7IC030qnY_Bwtm8gQ0AqthnQY"
+      audio_manifest_file_id: "1umjQfR0jKx285E2VVtYqvkP9IGb1v8N1"
+      ending_slide_file_id: "1E_g376FHQOt0M7c6gAJAjpNOCnKVpj0k"
+      output_filename: "kioxia-285a-20260918.mp4"
+      segment_count: "12"
+    secrets: inherit
+
+# Kioxia 285A render trigger 2026-09-18
