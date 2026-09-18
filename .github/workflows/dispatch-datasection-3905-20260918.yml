@@ -1,0 +1,28 @@
+name: Run DataSection 3905 20260918
+
+on:
+  push:
+    branches:
+      - remotion-prototype
+    paths:
+      - '.github/workflows/dispatch-datasection-3905-20260918.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  run-video-pipeline:
+    uses: ./.github/workflows/video-pipeline-youtube-direct.yml
+    with:
+      project_key: "2026-09-18_データセクション_3905_1399億円大型案件_焦点は実行へ"
+      video_plan_file_id: "1zM5RuN7mtGT5y0OOAI1UkzN30owpBW5B"
+      slides_folder_id: "1GjQ3XNTz_UYvTYzGNBZN9JSar8DoIY1a"
+      audio_folder_id: "1rcU1snndwoaQXYJ6aRcIdQSy3F3eXSCK"
+      audio_manifest_file_id: "1IUk_EBwPPsGvVvLeTdiKsdcDXGkzWyx4"
+      ending_slide_file_id: "1E_g376FHQOt0M7c6gAJAjpNOCnKVpj0k"
+      output_filename: "datasection-3905-20260918.mp4"
+      segment_count: "12"
+    secrets: inherit
+
+# DataSection 3905 render trigger 2026-09-18
