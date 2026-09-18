@@ -1,0 +1,106 @@
+name: YouTube Direct Upload Repair
+
+on:
+  push:
+    branches:
+      - remotion-prototype
+    paths:
+      - '.github/youtube-direct-upload-repair-trigger.txt'
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: "Source video pipeline run id"
+        required: true
+        default: "35338627264"
+      artifact_name:
+        description: "Final-ready artifact name"
+        required: true
+        default: "2026-09-18_キオクシア急騰_連休明けとNAND需給の注目点-final-ready"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  upload-private-draft:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+      YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+      YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+      YOUTUBE_CATEGORY_ID: "25"
+      YOUTUBE_DRAFT_TITLE: "【下書き】タイトルを設定してください"
+    steps:
+      - name: Checkout current pipeline code
+        uses: actions/checkout@v4
+        with:
+          ref: remotion-prototype
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        working-directory: remotion-video
+        run: npm install --ignore-scripts --prefer-offline
+
+      - name: Download final-ready artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name || '2026-09-18_キオクシア急騰_連休明けとNAND需給の注目点-final-ready' }}
+          path: final-ready
+          run-id: ${{ inputs.source_run_id || '35338627264' }}
+          github-token: ${{ github.token }}
+
+      - name: Verify completed video and publish metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s final-ready/final_video.mp4
+          test -s final-ready/publish/publish_metadata.json
+          test -s final-ready/publish/media_info.json
+          test -s final-ready/publish/loudness.txt
+          test ! -s final-ready/publish/decode-errors.txt
+
+      - name: Verify direct YouTube OAuth configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$YOUTUBE_CLIENT_ID"
+          test -n "$YOUTUBE_CLIENT_SECRET"
+          test -n "$YOUTUBE_REFRESH_TOKEN"
+
+      - name: Upload private draft directly to YouTube Data API
+        shell: bash
+        run: |
+          set -euo pipefail
+          node remotion-video/youtube-direct-upload.mjs \
+            final-ready/final_video.mp4 \
+            final-ready/publish/publish_metadata.json \
+            final-ready/publish/youtube_upload.json
+
+      - name: Verify YouTube draft result
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('final-ready/publish/youtube_upload.json',encoding='utf-8'))
+          assert d.get('video_id') or d.get('youtube_url'), d
+          assert d.get('privacy_status') == 'private', d
+          assert d.get('description_set') is True, d
+          assert d.get('tag_count',0) > 0, d
+          assert d.get('contains_synthetic_media') is False, d
+          print('video_id=',d.get('video_id'))
+          print('youtube_url=',d.get('youtube_url'))
+          print('studio_edit_url=',d.get('studio_edit_url'))
+          PY
+
+      - name: Upload YouTube delivery artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kioxia-285a-20260918-youtube-delivery
+          path: final-ready/publish/youtube_upload.json
+          retention-days: 7
