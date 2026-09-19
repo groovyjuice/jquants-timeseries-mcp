@@ -1,0 +1,28 @@
+name: Run Escript Energy 5721 20260919
+
+on:
+  push:
+    branches:
+      - remotion-prototype
+    paths:
+      - '.github/workflows/dispatch-escriptenergy-5721-20260919.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  run-video-pipeline:
+    uses: ./.github/workflows/video-pipeline-youtube-direct.yml
+    with:
+      project_key: "2026-09-19_5721_エスクリプトエナジー"
+      video_plan_file_id: "1qrZ4fm2vawjpDnzheKPySkMAt_z7mbKj"
+      slides_folder_id: "13WWlHVjFMeWEDS6FeobX-V4X7Bu83wp7"
+      audio_folder_id: "1Sl92YYyoZGn1z17OYGjAXchQTN9H5TeO"
+      audio_manifest_file_id: "1MRP8pA0gFLQ68NCjwkaXQRMTS0PjPJBp"
+      ending_slide_file_id: "1E_g376FHQOt0M7c6gAJAjpNOCnKVpj0k"
+      output_filename: "escriptenergy-5721-20260919.mp4"
+      segment_count: "12"
+    secrets: inherit
+
+# Escript Energy 5721 render trigger 2026-09-19
