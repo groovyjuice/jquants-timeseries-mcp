@@ -1,0 +1,28 @@
+name: Run Metaplanet 3350 20260919
+
+on:
+  push:
+    branches:
+      - remotion-prototype
+    paths:
+      - '.github/workflows/dispatch-metaplanet-3350-20260919.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  run-video-pipeline:
+    uses: ./.github/workflows/video-pipeline-youtube-direct.yml
+    with:
+      project_key: "2026-09-19_metaplanet_3350_btc_yen"
+      video_plan_file_id: "1XJr0PK3XLhNLheGnwlJJNtiClIRCKY4s"
+      slides_folder_id: "1I_uLIrdFcOpE52VjZKLqdhejgVm9NM7K"
+      audio_folder_id: "1EsGOqCag12fQTOJxQTBwhpdnyDrjXjhg"
+      audio_manifest_file_id: "1ywtoZRpMTUk2Bq587JH7c16UKFAT-DYL"
+      ending_slide_file_id: "1E_g376FHQOt0M7c6gAJAjpNOCnKVpj0k"
+      output_filename: "metaplanet-3350-20260919.mp4"
+      segment_count: "12"
+    secrets: inherit
+
+# Metaplanet 3350 render trigger 2026-09-19
